@@ -36,7 +36,7 @@ h1{font-family:'Jua','Gowun Dodum',sans-serif;font-weight:400;font-size:28px;mar
 button{font:inherit;cursor:pointer;border-radius:999px}
 .toggle{width:100%;padding:16px;font-family:'Jua','Gowun Dodum',sans-serif;font-size:20px;border:0;background:var(--pink);color:#fff;margin-top:16px}
 .on .toggle{background:var(--card);color:var(--pink-ink);border:2px solid var(--pink)}
-.link{display:flex;gap:8px;margin-top:10px}
+.link{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .link input{flex:1;min-width:0;font:inherit;font-size:13px;padding:10px 12px;border-radius:12px;border:2px solid var(--line);background:var(--bg);color:var(--ink)}
 .small{padding:10px 14px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-size:14px;white-space:nowrap}
 h2{font-family:'Jua','Gowun Dodum',sans-serif;font-weight:400;font-size:19px;margin:0 0 6px}
@@ -62,6 +62,21 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-
     <div class="link"><input id="url" readonly value="공유를 처음 켜면 만들어져요" aria-label="보여줄 사람에게 보낼 링크"><button class="small" id="copy">복사</button></div>
   </section>
 
+
+  <section class="card" id="test">
+    <h2>혼자 시험해 보기</h2>
+    <p class="meta">짝꿍이 없어도 이 페이지가 가짜 짝꿍이 되어 줄 수 있어요. 폰 앱에서 초대 코드를 만들어 여기에 넣고, 아래 버튼으로 합정역 주변을 움직이게 해 보세요.</p>
+    <div class="link"><input id="pname" placeholder="가짜 짝꿍 이름 (예: 하루)" maxlength="20" aria-label="가짜 짝꿍 이름"><button class="small" id="saveName">이름 저장</button></div>
+    <div class="link"><input id="code" placeholder="앱의 초대 코드 (예: AB12-CD34)" aria-label="앱의 초대 코드" autocapitalize="characters"><button class="small" id="pair">연결</button></div>
+    <div class="link" role="group" aria-label="가짜로 움직이기">
+      <button class="small" data-sim="walk">걷기</button>
+      <button class="small" data-sim="bus">버스</button>
+      <button class="small" data-sim="subway">지하철</button>
+      <button class="small" data-sim="still">멈춤</button>
+      <button class="small" data-sim="off">끄기</button>
+    </div>
+    <p class="err" id="simMsg"></p>
+  </section>
   <p class="meta">시험용 웹 버전이라 이 화면을 켜 둔 동안만 위치가 전송돼요. 화면을 끄거나 다른 앱으로 가면 멈춰요. 안드로이드 앱 버전에서는 꺼져 있어도 계속 보내져요.</p>
 </main>
 <script>
@@ -132,6 +147,53 @@ $('copy').addEventListener('click', async ()=>{
     else { await navigator.clipboard.writeText(viewLink()); $('copy').textContent = '복사됨'; setTimeout(()=>$('copy').textContent='복사', 1500); }
   }catch(e){ urlEl.select(); }
 });
+
+/* ---------- 혼자 시험해 보기: 가짜 짝꿍 ---------- */
+const simMsg = $('simMsg');
+let sim = null, simTimer = null, route = null;
+const LON0 = 126.9136561, LAT0 = 37.5493558, KX = 111320*Math.cos(LAT0*Math.PI/180)/10, KZ = 110540/10;
+const toLL = (x,z) => [LAT0 - z/KZ, LON0 + x/KX];
+async function loadRoute(kind){
+  if(!route){ const m = await (await fetch('hapjeong-1km.json')).json(); route = {walk:m.routes.walk.p, bus:m.routes.bus.p, subway:m.routes.subway.p}; }
+  const pts = route[kind==='still' ? 'walk' : kind];
+  const cum=[0]; for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]));
+  return {pts, cum, L:cum[cum.length-1]};
+}
+function along(r, s){ s = ((s % (2*r.L)) + 2*r.L) % (2*r.L); if(s > r.L) s = 2*r.L - s;   // 끝에서 되돌아옴
+  let i=0; while(i<r.cum.length-2 && r.cum[i+1]<s) i++; const t=(s-r.cum[i])/((r.cum[i+1]-r.cum[i])||1), a=r.pts[i], b=r.pts[i+1]||a;
+  return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t]; }
+$('saveName').addEventListener('click', async ()=>{
+  const n = $('pname').value.trim(); if(!n) return;
+  try{ await ensureCreds(); await rpc('set_name', {p_view_code:creds.view_code, p_write_key:creds.write_key, p_name:n}); simMsg.textContent = `이름을 '${n}'(으)로 저장했어요`; }
+  catch(e){ simMsg.textContent = '실패: ' + e.message; }
+});
+$('pair').addEventListener('click', async ()=>{
+  try{ await ensureCreds(); await rpc('pair_accept', {p_code:$('code').value, p_view_code:creds.view_code, p_write_key:creds.write_key});
+    simMsg.textContent = '앱과 연결됐어요! 이제 아래 버튼으로 움직여 보세요.'; }
+  catch(e){ simMsg.textContent = /invite expired/.test(e.message) ? '코드가 틀렸거나 10분이 지났어요' : /own code/.test(e.message) ? '같은 기기에서 만든 코드예요' : '연결 실패: ' + e.message; }
+});
+document.querySelectorAll('[data-sim]').forEach(b=>b.addEventListener('click', async ()=>{
+  const kind = b.dataset.sim;
+  clearInterval(simTimer); simTimer = null;
+  if(on) await stop();                               // 진짜 위치 공유와 섞이지 않게
+  try{ await ensureCreds(); }catch(e){ simMsg.textContent = '서버 연결 실패: ' + e.message; return; }
+  if(kind==='off'){ await rpc('push_location', {p_view_code:creds.view_code, p_write_key:creds.write_key, p_lat:null, p_lng:null, p_accuracy:null, p_speed:null, p_heading:null, p_activity:null, p_sharing:false}); simMsg.textContent = '가짜 짝꿍을 껐어요'; return; }
+  const r = await loadRoute(kind);
+  const speed = {walk:1.3, bus:7.5, subway:9, still:0}[kind];         // m/s
+  const act = {walk:'walk', bus:'vehicle', subway:'subway', still:'still'}[kind];
+  if(!sim) sim = {s: r.L*.3}; sim.r = r; sim.kind = kind;
+  let frozen = null;
+  const step = async ()=>{
+    sim.s += speed*3/10;                               // 3초마다, 1단위 = 10m
+    let [x,z] = along(r, sim.s);
+    if(kind==='subway'){ if(!frozen) frozen = [x,z]; [x,z] = frozen; }   // 땅속: GPS가 멈춘 것처럼 마지막 위치 유지
+    const [lat,lng] = toLL(x,z);
+    try{ await rpc('push_location', {p_view_code:creds.view_code, p_write_key:creds.write_key, p_lat:lat, p_lng:lng, p_accuracy:8, p_speed:speed, p_heading:null, p_activity:act, p_sharing:true});
+      simMsg.textContent = `가짜 짝꿍이 ${({walk:'걷는',bus:'버스 타는',subway:'지하철 타는',still:'멈춰 있는'})[kind]} 중이에요 (3초마다 전송)`; }
+    catch(e){ simMsg.textContent = '전송 실패: ' + e.message; }
+  };
+  step(); simTimer = setInterval(step, 3000);
+}));
 document.addEventListener('visibilitychange', async ()=>{ if(on && document.visibilityState==='visible'){ try{ if('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); }catch(e){} } });
 </script>
 </body>
