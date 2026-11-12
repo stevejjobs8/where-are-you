@@ -46,8 +46,9 @@ canvas:active{cursor:grabbing}
   border-right:2px solid var(--line);border-bottom:2px solid var(--line);transform:translateX(-50%) rotate(45deg);border-radius:0 0 4px 0}
 #msg{font-family:'Jua','Gowun Dodum',sans-serif;font-size:18px;margin:0;line-height:1.3}
 #sub{margin:3px 0 0;font-size:13.5px;color:var(--ink-soft);line-height:1.4}
-.hint{position:absolute;bottom:6px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-soft);margin:0;pointer-events:none}
-.hint a{color:inherit;pointer-events:auto}
+.hint{position:absolute;bottom:22px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-soft);margin:0;pointer-events:none}
+.attr{position:absolute;right:10px;bottom:4px;margin:0;font-size:10.5px;color:var(--ink-soft);opacity:.85}
+.attr a{color:inherit}
 .views{position:absolute;right:14px;top:12px;display:flex;flex-direction:column;gap:6px}
 .views button{font:inherit;font-size:14px;background:var(--card);color:var(--ink);border:2px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
 .views button:hover{border-color:var(--pink)}
@@ -76,7 +77,8 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
   #sub{font-size:11.5px;margin-top:1px}
   #wx{font-size:11px;margin-top:2px}
   .sig{white-space:nowrap;padding:8px 13px;font-size:14px}
-  .hint{font-size:11.5px}
+  .hint{display:none}
+  .attr{left:0;right:0;text-align:center;font-size:10px}
 }
 </style>
 </head>
@@ -90,7 +92,8 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
   <canvas id="c" role="img" aria-label="상대방의 현재 위치를 보여주는 미니어처 3D 동네"></canvas>
   <div class="bubble" id="bubble" aria-live="polite"><p id="msg">불러오는 중</p><p id="sub"></p><p id="wx" hidden></p></div>
   <button class="chip" id="gps" aria-pressed="true">GPS 보정 켜짐</button>
-  <p class="hint">좌우로 끌면 회전, 위아래로 끌면 기울기. 지도 데이터 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap 기여자</a></p>
+  <p class="hint">좌우로 끌면 회전, 위아래로 끌면 기울기</p>
+  <p class="attr"><a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">© OpenMapTiles</a> 데이터 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap 기여자</a></p>
 </section>
 
 <nav class="controls" aria-label="미리보기 조작">
@@ -156,10 +159,13 @@ const THEMES = {
     cloud:'#9FD8FF', cloudOp:.3, bevel:.05, edges:'#5FF3FF', rings:true, grid:true, light:[.7,.6]}
 };
 
-/* ================= 실제 지도 데이터 (OpenStreetMap, 합정역 주변 1km) =================
-   좌표는 합정역 근처를 원점으로 한 로컬 좌표(1 = 약 10m, +x 동쪽, +z 남쪽).
-   실서비스: 사람 주변 타일을 받아 같은 형식으로 변환해서 넣으면 됨. */
-/* MAP: hapjeong-1km.json 에서 불러옴 (실서비스에서는 주변 타일을 이 형식으로 받아옴) */
+/* ================= 지도 좌표·타일 =================
+   원점: 합정역(OSM). 1 = 약 10m, +x 동쪽, +z 남쪽.
+   건물·도로·물·녹지·버스정류장·역·출입구는 OpenFreeMap(OpenMapTiles, OSM) 벡터 타일에서 사람 주변만 받아옴.
+   합정 1km 파일(MAP)은 타일에 없는 세부(신호등·횡단보도·출구 번호)와, 타일을 못 받을 때의 대체 지도로 씀. */
+const LON0 = 126.9136561, LAT0 = 37.5493558, KX = 111320*Math.cos(LAT0*Math.PI/180)/10, KZ = 110540/10;
+const toLocal = (lon,lat) => [(lon-LON0)*KX, -(lat-LAT0)*KZ];
+const toLonLat = (x,z) => [LON0 + x/KX, LAT0 - z/KZ];
 const R = 14, FL = .22;
 const LINE2 = {color:'#5CC48A', name:'2'};
 const mod = (a,n) => ((a%n)+n)%n;
@@ -167,14 +173,21 @@ const smooth = t => t<=0?0:t>=1?1:t*t*(3-2*t);
 const rng = seed => { let a=seed|0; return ()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}; };
 const lvH = l => FL*(l<=5 ? l : 5+(l-5)*.6);
 const ROADW = {'양화로':1.4, '독막로':1.8};
+const inBaked = (x,z) => Math.abs(x)<48 && Math.abs(z)<48;
 
+/* 늘어나는 경로: 끝에 가까워지면 타일의 실제 길을 이어 붙임 */
 class Path {
-  constructor(pts, names, under){ this.p=pts; this.n=names||[]; this.u=under||null; this.c=[0];
-    for(let i=0;i<pts.length-1;i++) this.c.push(this.c[i]+Math.hypot(pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1]));
+  constructor(pts, names, under, widths){ this.p=[]; this.n=[]; this.u=[]; this.w=[]; this.c=[0]; this.L=0;
+    this.append(pts, names||[], under||[], widths||[]); }
+  append(pts, names, under, widths){
+    pts.forEach((q,i)=>{ const k=this.p.length;
+      if(k){ const a=this.p[k-1], d=Math.hypot(q[0]-a[0], q[1]-a[1]); if(d<1e-3) return; this.c.push(this.c[k-1]+d); }
+      this.p.push([q[0],q[1]]); this.n.push(names[i]||''); this.u.push(under[i]||0); this.w.push(widths[i]||1.2); });
     this.L=this.c[this.c.length-1]; }
-  seg(s){ s=Math.max(0,Math.min(this.L,s)); let i=0; while(i<this.c.length-2 && this.c[i+1]<s) i++;
-    const len=this.c[i+1]-this.c[i]||1e-6; return {i, t:(s-this.c[i])/len, len}; }
-  at(s){ const {i,t,len}=this.seg(s), a=this.p[i], b=this.p[i+1];
+  seg(s){ s=Math.max(0,Math.min(this.L,s)); let lo=0, hi=this.c.length-2;
+    while(lo<hi){ const m=(lo+hi+1)>>1; if(this.c[m]<=s) lo=m; else hi=m-1; }
+    const i=Math.max(0,lo), len=this.c[i+1]-this.c[i]||1e-6; return {i, t:(s-this.c[i])/len, len}; }
+  at(s){ const {i,t,len}=this.seg(s), a=this.p[i], b=this.p[i+1]||a;
     return {x:a[0]+(b[0]-a[0])*t, z:a[1]+(b[1]-a[1])*t, hx:(b[0]-a[0])/len, hz:(b[1]-a[1])/len}; }
   nearest(x,z){ let best=1e9, bs=0;
     for(let i=0;i<this.p.length-1;i++){ const a=this.p[i], b=this.p[i+1], dx=b[0]-a[0], dz=b[1]-a[1], L2=dx*dx+dz*dz||1e-9;
@@ -182,31 +195,195 @@ class Path {
       if(d<best){ best=d; bs=this.c[i]+t*(this.c[i+1]-this.c[i]); } }
     return {s:bs, d:best}; }
   name(s){ const {i}=this.seg(s); return this.n[i+1]||this.n[i]||''; }
-  depth(s){ if(!this.u) return 0; const {i,t}=this.seg(s); return this.u[i]+(this.u[i+1]-this.u[i])*t; }
+  depth(s){ const {i,t}=this.seg(s); const a=this.u[i]||0, b=this.u[i+1]!==undefined?this.u[i+1]:a; return a+(b-a)*t; }
+  width(s){ const {i}=this.seg(s); return this.w[i]||1.2; }
 }
 const ROUTES = {
-  bus: new Path(MAP.routes.bus.p, MAP.routes.bus.n),
-  walk: new Path(MAP.routes.walk.p, MAP.routes.walk.n),
-  subway: new Path(MAP.routes.subway.p, null, MAP.routes.subway.u)
+  bus: new Path(MAP.routes.bus.p, MAP.routes.bus.n, [], MAP.routes.bus.n.map(n=>ROADW[n]||1.4)),
+  walk: new Path(MAP.routes.walk.p, MAP.routes.walk.n, [], MAP.routes.walk.n.map(n=>ROADW[n]||1.4)),
+  subway: new Path(MAP.routes.subway.p, [], MAP.routes.subway.u)
 };
 const routeOf = m => m==='bus' ? ROUTES.bus : m==='subway' ? ROUTES.subway : ROUTES.walk;
+const routeKind = m => m==='bus' ? 'bus' : m==='subway' ? 'subway' : 'walk';
 const sigOn = path => MAP.signals.map(([x,z])=>path.nearest(x,z)).filter(q=>q.d<1.4).map(q=>q.s);
 const SIGS = {bus:sigOn(ROUTES.bus), walk:sigOn(ROUTES.walk)};
-/* 버스 경로 오른쪽(진행 방향 기준)에 붙은 실제 정류장만, 같은 이름은 하나로 */
-const BUS_STOPS = (()=>{ const out=[];
-  MAP.busStops.forEach(b=>{ const q=ROUTES.bus.nearest(b.x,b.z); if(q.d>1.8) return; const a=ROUTES.bus.at(q.s);
-    if(((b.x-a.x)*(-a.hz) + (b.z-a.z)*a.hx) < 0) return;
-    if(out.some(o=>Math.abs(o.s-q.s)<3)) return; out.push({s:q.s, name:b.name}); });
-  return out.sort((a,b)=>a.s-b.s); })();
-const STATION_S = ROUTES.subway.nearest(MAP.station.x, MAP.station.z).s;
+let BUS_STOPS = [], STATIONS = [];
 function laneOffset(m, path, s){
-  const w = ROADW[path.name(s)] || 1.2;
-  return m==='bus' ? .35 : m==='bike' ? w/2-.25 : m==='subway' ? 0 : w/2+.3;
+  const w = path.width(s);
+  return m==='bus' ? Math.min(.35, w/2-.2) : m==='bike' ? w/2-.25 : m==='subway' ? 0 : w/2+.3;
 }
 function worldPos(m, s, dir){
   const path=routeOf(m), a=path.at(s), tx=a.hx*dir, tz=a.hz*dir, off=laneOffset(m,path,s);
   return {x:a.x - tz*off, z:a.z + tx*off, tx, tz};
 }
+
+/* ================= 벡터 타일(MVT) 읽기: 의존성 없는 작은 protobuf 해독기 ================= */
+function parseMVT(ab){
+  const buf=new Uint8Array(ab), dv=new DataView(ab), st={p:0}, layers={}, td=new TextDecoder();
+  const vint=()=>{ let r=0, s=1, b; do{ b=buf[st.p++]; r+=(b&0x7f)*s; s*=128; }while(b>=0x80); return r; };
+  const skip=w=>{ if(w===0) vint(); else if(w===1) st.p+=8; else if(w===2){ const l=vint(); st.p+=l; } else if(w===5) st.p+=4; };
+  const str=()=>{ const l=vint(), s=td.decode(buf.subarray(st.p, st.p+l)); st.p+=l; return s; };
+  const packed=()=>{ const l=vint(), end=st.p+l, out=[]; while(st.p<end) out.push(vint()); return out; };
+  const msg=(end,cb)=>{ while(st.p<end){ const key=vint(); cb(Math.floor(key/8), key&7); } };
+  msg(buf.length, (f,w)=>{
+    if(f!==3 || w!==2){ skip(w); return; }
+    const end=st.p+vint(), L={name:'', extent:4096, keys:[], values:[], feats:[]};
+    msg(end, (f2,w2)=>{
+      if(f2===1) L.name=str();
+      else if(f2===2){ const e2=st.p+vint(), F={type:0, tags:[], geom:[]};
+        msg(e2,(f3,w3)=>{ if(f3===2) F.tags=packed(); else if(f3===3) F.type=vint(); else if(f3===4) F.geom=packed(); else skip(w3); });
+        L.feats.push(F); }
+      else if(f2===3) L.keys.push(str());
+      else if(f2===4){ const e2=st.p+vint(); let v=null;
+        msg(e2,(f3,w3)=>{ if(f3===1) v=str(); else if(f3===2){ v=dv.getFloat32(st.p,true); st.p+=4; } else if(f3===3){ v=dv.getFloat64(st.p,true); st.p+=8; }
+          else if(f3===4||f3===5) v=vint(); else if(f3===6){ const n=vint(); v=n%2 ? -(n+1)/2 : n/2; } else if(f3===7) v=!!vint(); else skip(w3); });
+        L.values.push(v); }
+      else if(f2===5) L.extent=vint();
+      else skip(w2);
+    });
+    layers[L.name]=L;
+  });
+  return layers;
+}
+function mvtProps(L,F){ const o={}; for(let i=0;i<F.tags.length;i+=2) o[L.keys[F.tags[i]]]=L.values[F.tags[i+1]]; return o; }
+function mvtGeom(F){ const g=F.geom, rings=[]; let x=0, y=0, i=0, cur=null;
+  while(i<g.length){ const ci=g[i++], cmd=ci&7, cnt=ci>>3;
+    if(cmd===1||cmd===2){ for(let k=0;k<cnt;k++){ const dx=g[i++], dy=g[i++]; x+=(dx>>>1)^(-(dx&1)); y+=(dy>>>1)^(-(dy&1));
+      if(cmd===1){ cur=[]; rings.push(cur); } cur.push([x,y]); } } }
+  return rings; }
+
+/* 건물 외곽선 다듬기(파이썬 전처리와 같은 규칙): 단순화 → 반시계 정렬 → 살짝 안쪽으로 */
+const area2 = p => { let a=0; for(let i=0;i<p.length;i++){ const q=p[i], r=p[(i+1)%p.length]; a+=q[0]*r[1]-r[0]*q[1]; } return a/2; };
+function dp(pts,eps){ if(pts.length<3) return pts; const a=pts[0], b=pts[pts.length-1], dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1e-9;
+  let im=0, dm=0; for(let i=1;i<pts.length-1;i++){ const d=Math.abs(dx*(a[1]-pts[i][1])-dz*(a[0]-pts[i][0]))/L; if(d>dm){ dm=d; im=i; } }
+  return dm>eps ? dp(pts.slice(0,im+1),eps).slice(0,-1).concat(dp(pts.slice(im),eps)) : [a,b]; }
+function dpRing(r,eps){ let far=0, fd=0; r.forEach((q,i)=>{ const d=Math.hypot(q[0]-r[0][0], q[1]-r[0][1]); if(d>fd){ fd=d; far=i; } });
+  const a=dp(r.slice(0,far+1),eps), b=dp(r.slice(far).concat([r[0]]),eps); return a.slice(0,-1).concat(b.slice(0,-1)); }
+function shapeBuilding(ring, levels){
+  let r = dpRing(ring,.12); if(r.length<3) return null;
+  if(area2(r)<0) r=r.reverse(); const A=area2(r); if(A<.25) return null;
+  const cx=r.reduce((s,q)=>s+q[0],0)/r.length, cz=r.reduce((s,q)=>s+q[1],0)/r.length;
+  const xs=r.map(q=>q[0]), zs=r.map(q=>q[1]), bw=Math.max(...xs)-Math.min(...xs), bd=Math.max(...zs)-Math.min(...zs);
+  const f=Math.max(.72, 1-.18/Math.max(.5, Math.min(bw,bd)));
+  let lv = levels; if(!lv){ const m2=A*100; lv = m2<60?2 : m2<150?3 : m2<300?4 : m2<700?5 : m2<1500?7 : 9; }
+  return {c:[cx,cz], p:r.map(q=>[(q[0]-cx)*f, (q[1]-cz)*f]), l:Math.min(20,Math.max(1,lv))};
+}
+const ROAD_W = {motorway:2.0, trunk:1.8, primary:1.5, secondary:1.4, tertiary:1.1, minor:.75, service:.45, track:.4, busway:.7, path:.22, raceway:.6};
+const FOOT_T = ['footway','steps','path','cycleway','pedestrian'];
+
+/* ================= 타일 관리: 사람 주변 타일만 받아서 우리 형식으로 변환 ================= */
+const TZ = 14, TILES = new Map();
+let tileURL = null, tileState = 'loading';
+fetch('https://tiles.openfreemap.org/planet').then(r=>r.json()).then(j=>{ tileURL = j.tiles[0]; tileState='ok'; }).catch(()=>{ tileState='fail'; useBaked(); });
+setTimeout(()=>{ if(!tileURL && tileState==='loading'){ tileState='fail'; useBaked(); } }, 8000);
+function tileXY(x,z){ const [lon,lat]=toLonLat(x,z), n=2**TZ, r=lat*Math.PI/180;
+  return [Math.floor((lon+180)/360*n), Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n)]; }
+function newTile(key){ return {key, ready:false, roads:[], greens:[], water:[], bld:[], rails:[], names:[], bus:[], entr:[], stations:[], trees:[], props:[]}; }
+function useBaked(){ if(TILES.has('baked')) return;
+  const t=newTile('baked'); t.roads=MAP.roads; t.greens=MAP.greens; t.water=MAP.water||[]; t.bld=MAP.bld; t.trees=MAP.trees;
+  t.ready=true; TILES.set('baked', t); buildTileProps(t); }
+function convertTile(t, tx, ty, layers){
+  const n=2**TZ;
+  const proj = ext => (px,py)=>{ const X=(tx+px/ext)/n, Y=(ty+py/ext)/n; return toLocal(X*360-180, Math.atan(Math.sinh(Math.PI*(1-2*Y)))*180/Math.PI); };
+  const each = (name, fn) => { const L=layers[name]; if(!L) return; const pj=proj(L.extent); L.feats.forEach(F=>fn(mvtProps(L,F), mvtGeom(F), pj, L.extent, F.type)); };
+  each('building', (p,g,pj,ext,ty)=>{ if(ty!==3 || p.hide_3d) return;
+    g.forEach(ring=>{ if(ring.length<4) return; let a=0; for(let i=0;i<ring.length;i++){ const q=ring[i], r=ring[(i+1)%ring.length]; a+=q[0]*r[1]-r[0]*q[1]; }
+      if(a<=0) return;                                     // 바깥 테두리만
+      const cx=ring.reduce((s,q)=>s+q[0],0)/ring.length, cy=ring.reduce((s,q)=>s+q[1],0)/ring.length;
+      if(cx<0||cy<0||cx>=ext||cy>=ext) return;              // 이웃 타일과 겹치는 건물은 한쪽에서만
+      const lv = p.render_height ? Math.round(p.render_height/3.2) : 0;
+      const b = shapeBuilding(ring.slice(0, ring[0][0]===ring[ring.length-1][0]&&ring[0][1]===ring[ring.length-1][1] ? -1 : undefined).map(q=>pj(q[0],q[1])), lv);
+      if(b) t.bld.push(b); }); });
+  each('transportation', (p,g,pj,ext,ty)=>{ if(ty!==2) return;
+    const lines = g.map(r=>r.map(q=>pj(q[0],q[1])));
+    if(p.class==='transit' || p.class==='rail'){ if(p.subclass!=='subway') return;
+      const d = p.brunnel==='tunnel' ? 1 : p.brunnel==='bridge' ? -.4 : 0; lines.forEach(q=>t.rails.push({p:q, d})); return; }
+    if(p.brunnel==='tunnel') return;
+    const foot = p.class==='path';
+    const w = foot ? (p.subclass==='steps'?.25:.22) : (ROAD_W[p.class]||.5);
+    lines.forEach(q=>{ if(q.length<2) return; const xs=q.map(a=>a[0]), zs=q.map(a=>a[1]);
+      t.roads.push({t: foot ? (FOOT_T.includes(p.subclass)?p.subclass:'footway') : p.class, w, n:'', o:p.oneway===1?1:p.oneway===-1?-1:0, p:q, b:[Math.min(...xs),Math.min(...zs),Math.max(...xs),Math.max(...zs)]}); }); });
+  each('transportation_name', (p,g,pj)=>{ if(p.name) g.forEach(r=>t.names.push({n:p.name, p:r.map(q=>pj(q[0],q[1]))})); });
+  const poly = (arr) => (p,g,pj,ext,ty)=>{ if(ty!==3) return; g.forEach(ring=>{ let a=0; for(let i=0;i<ring.length;i++){ const q=ring[i], r=ring[(i+1)%ring.length]; a+=q[0]*r[1]-r[0]*q[1]; } if(a>0) arr.push(ring.map(q=>pj(q[0],q[1]))); }); };
+  each('water', poly(t.water));
+  each('park', poly(t.greens));
+  each('landcover', (p,g,pj,ext,ty)=>{ if(['grass','wood','farmland'].includes(p.class)) poly(t.greens)(p,g,pj,ext,ty); });
+  each('poi', (p,g,pj,ext,ty)=>{ if(ty!==1) return; const [x,z]=pj(g[0][0][0], g[0][0][1]);
+    if(p.subclass==='bus_stop' || p.class==='bus') t.bus.push({x,z,name:p.name||'정류장'});
+    else if(p.subclass==='subway_entrance' || p.subclass==='train_station_entrance') t.entr.push({x,z,ref:p.ref||''});
+    else if(p.class==='railway' && (p.subclass==='subway' || p.subclass==='station' || p.subclass==='halt')) t.stations.push({x,z,name:(p.name||'').replace(/역$/,'')}); });
+  const r=rng(tx*92821+ty);
+  t.greens.forEach(pg=>{ const xs=pg.map(q=>q[0]), zs=pg.map(q=>q[1]), x0=Math.min(...xs), x1=Math.max(...xs), z0=Math.min(...zs), z1=Math.max(...zs);
+    const want=Math.min(40, Math.floor((x1-x0)*(z1-z0)/4));
+    for(let k=0,tries=0;k<want && tries<want*4;tries++){ const x=x0+r()*(x1-x0), z=z0+r()*(z1-z0);
+      let inside=false; for(let i=0,j=pg.length-1;i<pg.length;j=i++){ const [xi,zi]=pg[i],[xj,zj]=pg[j]; if((zi>z)!==(zj>z) && x<(xj-xi)*(z-zi)/(zj-zi)+xi) inside=!inside; }
+      if(inside){ t.trees.push([x,z]); k++; } } });
+}
+function ensureTiles(V){
+  if(!tileURL) return;
+  const need=new Set();
+  [[-1,-1],[1,-1],[-1,1],[1,1],[0,0]].forEach(([sx,sz])=>{ const [tx,ty]=tileXY(V.x+sx*(R+8), V.z+sz*(R+8)); need.add(tx+'/'+ty); });
+  need.forEach(key=>{ const old=TILES.get(key); if(old && old.failedAt && performance.now()-old.failedAt>15000) TILES.delete(key); if(TILES.has(key)) return; const [tx,ty]=key.split('/').map(Number), t=newTile(key); TILES.set(key,t);
+    fetch(tileURL.replace('{z}',TZ).replace('{x}',tx).replace('{y}',ty)).then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then(ab=>{ convertTile(t, tx, ty, parseMVT(ab)); t.ready=true; buildTileProps(t); lastDrawn=null; refreshStops(); })
+      .catch(err=>{ console.warn('tile', key, err); t.failedAt=performance.now(); }); });
+  for(const [key,t] of TILES){ if(key==='baked' || need.has(key)) continue;
+    const [tx,ty]=key.split('/').map(Number), [cx,cy]=tileXY(V.x,V.z); if(Math.abs(tx-cx)>1 || Math.abs(ty-cy)>1){ dropTileProps(t); TILES.delete(key); } }
+}
+const readyTiles = () => [...TILES.values()].filter(t=>t.ready);
+function roadNameNear(x,z){ let best=null;
+  for(const t of readyTiles()) for(const nm of t.names) for(let i=0;i<nm.p.length-1;i++){ const a=nm.p[i], b=nm.p[i+1], dx=b[0]-a[0], dz=b[1]-a[1], L2=dx*dx+dz*dz||1e-9;
+    const u=Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/L2)), d=Math.hypot(x-a[0]-dx*u, z-a[1]-dz*u); if(d<2 && (!best||d<best.d)) best={d,n:nm.n}; }
+  return best ? best.n : ''; }
+
+/* 경로 끝에 다다르면, 진행 방향과 가장 자연스럽게 이어지는 실제 길(또는 2호선 선로)을 붙임 */
+const BUS_CLASS = ['motorway','trunk','primary','secondary','tertiary','busway'];
+function extendPath(kind){
+  const path = ROUTES[kind], n=path.p.length; if(n<2) return false;
+  const E=path.p[n-1], Pv=path.p[n-2], hl=Math.hypot(E[0]-Pv[0],E[1]-Pv[1])||1, hx=(E[0]-Pv[0])/hl, hz=(E[1]-Pv[1])/hl;
+  let best=null;
+  for(const t of readyTiles()){
+    const lines = kind==='subway' ? t.rails.map(r=>({p:r.p, d:r.d, w:0, o:0, t:'subway'}))
+      : t.roads.filter(r=> kind==='bus' ? BUS_CLASS.includes(r.t) : !['motorway','trunk'].includes(r.t));
+    for(const ln of lines){ const p=ln.p;
+      for(let i=0;i<p.length-1;i++){ const a=p[i], b=p[i+1], dx=b[0]-a[0], dz=b[1]-a[1], L2=dx*dx+dz*dz; if(L2<1e-6) continue;
+        const u=Math.max(0,Math.min(1,((E[0]-a[0])*dx+(E[1]-a[1])*dz)/L2)), qx=a[0]+dx*u, qz=a[1]+dz*u, d=Math.hypot(E[0]-qx,E[1]-qz);
+        if(d>1.1) continue;
+        for(const sd of [1,-1]){
+          if(kind==='bus' && ((ln.o===1 && sd<0) || (ln.o===-1 && sd>0))) continue;
+          const L=Math.sqrt(L2), ux=dx/L*sd, uz=dz/L*sd, dot=ux*hx+uz*hz; if(dot<.25) continue;
+          const pts=[[qx,qz]]; let acc=0;
+          for(let k = sd>0 ? i+1 : i; sd>0 ? k<p.length : k>=0; k+=sd){ const q=p[k], l=pts[pts.length-1]; acc+=Math.hypot(q[0]-l[0], q[1]-l[1]); pts.push(q); if(acc>40) break; }
+          if(acc<1.2) continue;
+          const score=(1-dot)*3 + d + (kind==='bus' && !['primary','secondary','trunk'].includes(ln.t) ? .8 : 0) + (kind==='subway' && ln.d!==path.u[n-1] ? .3 : 0);
+          if(!best || score<best.score) best={score, pts, ln};
+        }
+      }
+    }
+  }
+  if(!best) return false;
+  const add = best.pts.slice(1);
+  const recent = path.p.slice(-30);
+  if(add.length && recent.some(q=>Math.hypot(q[0]-add[Math.min(2,add.length-1)][0], q[1]-add[Math.min(2,add.length-1)][1])<.3)) return false;
+  const w = kind==='subway' ? 0 : (best.ln.w||1.2);
+  path.append(add, add.map(q=> kind==='subway' ? '' : roadNameNear(q[0],q[1])), add.map(()=> kind==='subway' ? best.ln.d : 0), add.map(()=>w));
+  refreshStops();
+  return true;
+}
+/* 버스 정류장(진행 방향 오른쪽)과 지하철역을 경로 위 거리로 정리 */
+function refreshStops(){
+  const bus = ROUTES.bus, out=[];
+  const cands = MAP.busStops.concat(...readyTiles().map(t=>t.bus.filter(b=>!inBaked(b.x,b.z))));
+  cands.forEach(b=>{ const q=bus.nearest(b.x,b.z); if(q.d>1.8) return; const a=bus.at(q.s);
+    if(((b.x-a.x)*(-a.hz) + (b.z-a.z)*a.hx) < 0) return; if(out.some(o=>Math.abs(o.s-q.s)<3)) return; out.push({s:q.s, name:b.name}); });
+  BUS_STOPS = out.sort((a,b)=>a.s-b.s);
+  const sub = ROUTES.subway, st=[{s:sub.nearest(MAP.station.x, MAP.station.z).s, name:MAP.station.name, lines:MAP.station.lines}];
+  readyTiles().forEach(t=>t.stations.forEach(s=>{ if(!s.name || s.name===MAP.station.name) return; const q=sub.nearest(s.x,s.z); if(q.d>3) return;
+    if(st.some(o=>o.name===s.name || Math.abs(o.s-q.s)<4)) return; st.push({s:q.s, name:s.name, lines:[['2',LINE2.color]]}); }));
+  STATIONS = st.sort((a,b)=>a.s-b.s);
+}
+refreshStops();
+
 /* ================= 배치 도우미: 도로·건물을 피해서 인도 위 자리 찾기 ================= */
 const FOOT = ['footway','steps','path','cycleway','pedestrian'];
 const DRIVE = MAP.roads.filter(r=>!FOOT.includes(r.t));
@@ -394,12 +571,33 @@ function poseDoll(d, kind, t, wx){
   u.head.rotation.y = look;
 }
 
-/* ================= 지도 위 소품: 실제 건물·나무·신호등·정류장·역 출입구 ================= */
+/* ================= 지도 위 소품 =================
+   props: 합정 세부(신호등·정류장·출입구) / 각 타일의 props: 건물·나무·정류장·출입구. 모두 원판 근처에 올 때만 만들어짐 */
 let props = [];
-function clearProps(){ props.forEach(p=>{ if(p.obj){ scene.remove(p.obj); disposeTree(p.obj); } }); props = []; }
-/* 1km 데이터라 건물이 2천 개: 원판 근처에 올 때만 만들고, 멀어지면 지움 */
-function addProp(obj, wx, wz, tree){ const lazy = typeof obj === 'function';
-  if(!lazy) scene.add(obj); props.push({obj: lazy?null:obj, make: lazy?obj:null, wx, wz, tree:!!tree}); }
+function clearProps(){ props.forEach(p=>{ if(p.obj){ scene.remove(p.obj); disposeTree(p.obj); } }); props = []; readyTiles().forEach(dropTileProps); }
+function addProp(obj, wx, wz, tree, list){ const lazy = typeof obj === 'function';
+  if(!lazy) scene.add(obj); (list||props).push({obj: lazy?null:obj, make: lazy?obj:null, wx, wz, tree:!!tree}); }
+function dropTileProps(t){ t.props.forEach(p=>{ if(p.obj){ scene.remove(p.obj); disposeTree(p.obj); } }); t.props=[];
+  for(let i=ENTR.length-1;i>=0;i--) if(ENTR[i].key===t.key) ENTR.splice(i,1); }
+function roadDirNear(x,z){ let best=null;
+  for(const t of readyTiles()) for(const r of t.roads){ if(FOOT_T.includes(r.t)) continue; for(let i=0;i<r.p.length-1;i++){ const a=r.p[i], b=r.p[i+1], dx=b[0]-a[0], dz=b[1]-a[1], L2=dx*dx+dz*dz||1e-9;
+    const u=Math.max(0,Math.min(1,((x-a[0])*dx+(z-a[1])*dz)/L2)), d=Math.hypot(x-a[0]-dx*u, z-a[1]-dz*u); if(!best||d<best.d){ const L=Math.sqrt(L2); best={d, dir:[dx/L,dz/L]}; } } }
+  return best ? best.dir : [0,1]; }
+function busShelter(dir){ const st = new THREE.Group();
+  mesh(new THREE.BoxGeometry(.3,.04,.9), M(T.accent), 0,.55,0, st);
+  [-.35,.35].forEach(o=>mesh(SHARED.post, M('#7A7F9E'), .08,.27,o, st));
+  mesh(new THREE.BoxGeometry(.14,.08,.6), M(T.bridge), .05,.14,0, st);
+  st.rotation.y = Math.atan2(dir[0],dir[1]); return st; }
+function buildTileProps(t){
+  if(!T) return; dropTileProps(t);
+  t.bld.forEach((b,i)=>addProp(()=>buildingMesh(b,i), b.c[0], b.c[1], false, t.props));
+  t.trees.forEach(([x,z],i)=>{ const sc=.7+((i*7919)%100)/290; addProp(()=>{ const g=new THREE.Group(); tree(g,0,0,sc,rng(i+3)); return g; }, x, z, 1, t.props); });
+  if(t.key==='baked') return;
+  t.bus.filter(b=>!inBaked(b.x,b.z)).forEach(bs=>addProp(()=>busShelter(roadDirNear(bs.x,bs.z)), bs.x, bs.z, false, t.props));
+  t.entr.filter(e=>!inBaked(e.x,e.z)).forEach(e=>{ const d=roadDirNear(e.x,e.z);
+    addProp(()=>{ const m=makeEntrance(e.ref); m.rotation.y=Math.atan2(d[0],d[1]); return m; }, e.x, e.z, false, t.props);
+    ENTR.push({wx:e.x, wz:e.z, hx:d[0], hz:d[1], key:t.key}); });
+}
 function buildingMesh(b, idx){
   const g = new THREE.Group(), h = lvH(b.l)+.1;
   const sh = new THREE.Shape(); b.p.forEach((q,i)=> i ? sh.lineTo(q[0],-q[1]) : sh.moveTo(q[0],-q[1]));
@@ -462,10 +660,7 @@ function makeEntrance(no){
   return e;
 }
 function buildProps(){
-  clearProps();
-  const r = rng(11);
-  MAP.bld.forEach((b,i)=>addProp(()=>buildingMesh(b,i), b.c[0], b.c[1]));
-  MAP.trees.forEach(([x,z],i)=>{ const sc=.7+((i*7919)%100)/290; addProp(()=>{ const g=new THREE.Group(); tree(g,0,0,sc,rng(i+3)); return g; },x,z,1); });
+  clearProps(); ENTR.length = 0;
   JUNCTIONS.forEach(j=>j.poles.forEach(pp=>{
     const light = new THREE.Group();
     mesh(SHARED.pole, M('#6B7090'), 0,.55,0, light);
@@ -474,17 +669,13 @@ function buildProps(){
     light.rotation.y = Math.atan2(j.x-pp.x, j.z-pp.z);
     addProp(light, pp.x, pp.z);
   }));
-  MAP.busStops.forEach(bs=>{ const g=roadGap(bs.x,bs.z); addProp(()=>{ const st = new THREE.Group();
-    mesh(new THREE.BoxGeometry(.3,.04,.9), M(T.accent), 0,.55,0, st);
-    [-.35,.35].forEach(o=>mesh(SHARED.post, M('#7A7F9E'), .08,.27,o, st));
-    mesh(new THREE.BoxGeometry(.14,.08,.6), M(T.bridge), .05,.14,0, st);
-    st.rotation.y = Math.atan2(g.dir[0],g.dir[1]); return st; }, bs.x, bs.z); });
-  ENTR.length = 0;
-  ENTR_SPOTS.forEach((sp,k)=>{ const e = makeEntrance(sp.ref); e.rotation.y = Math.atan2(sp.hx,sp.hz);
-    addProp(e, sp.x, sp.z); ENTR.push({wx:sp.x, wz:sp.z, hx:sp.hx, hz:sp.hz}); });
+  MAP.busStops.forEach(bs=>{ const g=roadGap(bs.x,bs.z); addProp(()=>busShelter(g.dir), bs.x, bs.z); });
+  ENTR_SPOTS.forEach(sp=>{ addProp(()=>{ const e = makeEntrance(sp.ref); e.rotation.y = Math.atan2(sp.hx,sp.hz); return e; }, sp.x, sp.z);
+    ENTR.push({wx:sp.x, wz:sp.z, hx:sp.hx, hz:sp.hz, key:'baked-detail'}); });
+  readyTiles().forEach(buildTileProps);
 }
 function updateProps(V){
-  for(const p of props){
+  for(const p of props.concat(...readyTiles().map(t=>t.props))){
     const rx=p.wx-V.x, rz=p.wz-V.z, dd=Math.hypot(rx,rz), s=smooth((R-.4-dd)/1.4);
     if(p.make){ if(!p.obj && dd<R+1.5){ p.obj=p.make(); scene.add(p.obj); }
       else if(p.obj && dd>R+5){ scene.remove(p.obj); disposeTree(p.obj); p.obj=null; } }
@@ -504,13 +695,14 @@ function drawGround(V){
   ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle = T.ground; ctx.fillRect(0,0,Nn,Nn);
   ctx.setTransform(S,0,0,S,(R-V.x)*S,(R-V.z)*S);
   const fillPoly = pk=>{ ctx.beginPath(); pk.forEach((q,i)=> i ? ctx.lineTo(q[0],q[1]) : ctx.moveTo(q[0],q[1])); ctx.fill(); };
-  ctx.fillStyle = T.lawn; MAP.greens.forEach(fillPoly); ctx.fillStyle = T.water; (MAP.water||[]).forEach(fillPoly);
+  const TL = readyTiles();
+  ctx.fillStyle = T.lawn; TL.forEach(t=>t.greens.forEach(fillPoly)); ctx.fillStyle = T.water; TL.forEach(t=>t.water.forEach(fillPoly));
   if(T.grid){ ctx.strokeStyle='rgba(95,243,255,.13)'; ctx.lineWidth=.04; ctx.beginPath();
     for(let x=Math.floor(V.x-R); x<V.x+R; x++){ ctx.moveTo(x,V.z-R); ctx.lineTo(x,V.z+R); }
     for(let z=Math.floor(V.z-R); z<V.z+R; z++){ ctx.moveTo(V.x-R,z); ctx.lineTo(V.x+R,z); } ctx.stroke(); }
   ctx.lineCap='round'; ctx.lineJoin='round';
   const foot = r => ['footway','steps','path','cycleway','pedestrian'].includes(r.t);
-  const roads = MAP.roads.filter(r=>r.b[0]<V.x+R+1 && r.b[2]>V.x-R-1 && r.b[1]<V.z+R+1 && r.b[3]>V.z-R-1).sort((a,b)=>ROAD_ORDER(a)-ROAD_ORDER(b));
+  const roads = [].concat(...TL.map(t=>t.roads)).filter(r=>r.b[0]<V.x+R+1 && r.b[2]>V.x-R-1 && r.b[1]<V.z+R+1 && r.b[3]>V.z-R-1).sort((a,b)=>ROAD_ORDER(a)-ROAD_ORDER(b));
   ctx.strokeStyle = T.walk;
   roads.forEach(r=>{ ctx.lineWidth = foot(r) ? r.w : r.w+.6; strokePath(r.p); });
   ctx.strokeStyle = T.road;
@@ -795,18 +987,19 @@ function updateNetwork(V){
   if(!under.userData.pil){ const pg=new THREE.CylinderGeometry(.07,.09,1,10); pg.translate(0,.5,0);
     under.userData.pil = new THREE.InstancedMesh(pg, new THREE.MeshLambertMaterial({color:'#C9CCDA'}), 120); under.userData.pil.frustumCulled=false; under.add(under.userData.pil); }
   { const pil = under.userData.pil; let m=0;
-    for(let s=0; s<path.L && m<120; s+=1.6){ if(path.depth(s) > -.05) continue; const a=path.at(s), rx=a.x-V.x, rz=a.z-V.z, d=Math.hypot(rx,rz); if(d>R-.4) continue;
+    for(let s=Math.max(0,Math.floor((sNear-R-2)/1.6)*1.6); s<Math.min(path.L, sNear+R+2) && m<120; s+=1.6){ if(path.depth(s) > -.05) continue; const a=path.at(s), rx=a.x-V.x, rz=a.z-V.z, d=Math.hypot(rx,rz); if(d>R-.4) continue;
       const top = trainY(path.depth(s))-.38; if(top<=.32) continue; const kp = Math.max(.002, smooth((R-.4-d)/1.4));
       _o.position.set(rx,.3,rz); _o.rotation.set(0,0,0); _o.scale.set(kp, (top-.3)*kp, kp); _o.updateMatrix(); pil.setMatrixAt(m++, _o.matrix); }
     pil.count=m; pil.instanceMatrix.needsUpdate=true; }
   [tracksBed,tracksRailL,tracksRailR].forEach(m=>{ m.count=n; m.instanceMatrix.needsUpdate=true; });
   if(tracksBed.instanceColor) tracksBed.instanceColor.needsUpdate=true;
-  const a = path.at(STATION_S), g = stationPool[0], rx=a.x-a.hz*(-.75)-V.x, rz=a.z+a.hx*(-.75)-V.z, d=Math.hypot(rx,rz);
-  g.visible = d < R-1;
-  if(g.visible){ drawSign(g, {name:MAP.station.name, lines:MAP.station.lines});
-    g.position.set(rx, trainY(path.depth(STATION_S))-.25, rz); g.rotation.y = Math.atan2(a.hx,a.hz);
-    g.scale.setScalar(Math.max(.002, smooth((R-1-d)/1.5))); }
-  for(let k=1;k<stationPool.length;k++) stationPool[k].visible=false;
+  let k=0;
+  STATIONS.forEach(st=>{ if(k>=stationPool.length) return;
+    const a = path.at(st.s), rx=a.x+a.hz*.75-V.x, rz=a.z-a.hx*.75-V.z, d=Math.hypot(rx,rz); if(d > R-1) return;
+    const g = stationPool[k++]; g.visible = true; drawSign(g, st);
+    g.position.set(rx, trainY(path.depth(st.s))-.25, rz); g.rotation.y = Math.atan2(a.hx,a.hz);
+    g.scale.setScalar(Math.max(.002, smooth((R-1-d)/1.5))); });
+  for(;k<stationPool.length;k++) stationPool[k].visible=false;
 }
 
 /* ================= 상태 ================= */
@@ -816,7 +1009,7 @@ const P = {s:START_S};                 // 실제 위치(경로 위 거리)
 const D = {s:START_S};                       // 화면에 보여줄 위치(보정 후)
 const V = {x:0, z:0};                  // 화면 중심 월드 좌표
 { const w=worldPos('bus',P.s,dir); V.x=w.x; V.z=w.z; }
-let lastStop=null;
+let lastStop=null, lastExtend=-9, lastTiles=-9;
 let sigPhase='green', sigT=0, hold=0, served=null, stopAt='', walked=0, windAmt=0, t=0;
 const SIG_DUR = {green:5, yellow:1.2, red:4.5};
 function paintSignal(){ if(!SHARED.lamps) return;
@@ -947,9 +1140,10 @@ function frame(){
       for(const sg of (mode==='bus'?SIGS.bus:SIGS.walk)){ const line = sg - dir*(front+1.0);
         if(sigPhase!=='green' && (P.s-line)*dir <= .001 && (ns-line)*dir > 0){ ns=line; stopAt='red'; } }
     }
-    const stopList = mode==='bus' ? BUS_STOPS.map(b=>b.s) : mode==='subway' ? [STATION_S] : [];
+    const stopList = mode==='bus' ? BUS_STOPS.map(b=>b.s) : mode==='subway' ? STATIONS.map(x=>x.s) : [];
     if(stopAt!=='red') for(const stopS of stopList){ const key=stopS+':'+dir;
       if(served!==key && (P.s-stopS)*dir < 0 && (ns-stopS)*dir >= 0){ ns=stopS; hold = mode==='bus'?1.8:2.0; served=key; lastStop=stopS; break; } }
+    if(dir>0 && ns > path.L-30 && t-lastExtend > .4){ lastExtend = t; extendPath(routeKind(mode)); }
     if(ns > path.L-1.5){ ns = path.L-1.5; dir = -1; served=null; }
     if(ns < 1.5){ ns = 1.5; dir = 1; served=null; }
     moved = ns-P.s; walked += Math.abs(moved); P.s = ns;
@@ -962,6 +1156,7 @@ function frame(){
   if(gpsOn || depthNow>.5 || !G.rawPos){ V.x += (w.x-V.x)*Math.min(1,dt*5); V.z += (w.z-V.z)*Math.min(1,dt*5); }
   else { V.x = G.rawPos.x; V.z = G.rawPos.z; }
   if(!lastDrawn || Math.abs(lastDrawn.x-V.x)>.004 || Math.abs(lastDrawn.z-V.z)>.004){ drawGround(V); lastDrawn={x:V.x,z:V.z}; }
+  if(t-lastTiles > .5){ lastTiles = t; ensureTiles(V); }
   updateProps(V);
 
   const head = Math.atan2(w.tx, w.tz);
@@ -991,15 +1186,16 @@ function frame(){
 
   /* 말풍선 */
   let a,b,c='', top;
-  const inside = mode==='bus' || mode==='subway', road = routeOf(mode).name(P.s);
+  const inside = mode==='bus' || mode==='subway', road = routeOf(mode).name(P.s) || '이 길';
   if(mode==='bus'){ top=.95; a='버스 타고 '+road+' 달리는 중';
     const ahead = BUS_STOPS.filter(b=>(b.s-P.s)*dir>0).sort((a,b)=>(a.s-P.s)*dir-(b.s-P.s)*dir)[0];
     const here = BUS_STOPS.find(b=>b.s===lastStop);
     b = stopAt==='red' ? '빨간불이라 잠깐 멈췄어요' : hold>0 && here ? here.name+' 정류장에 섰어요' : ahead ? '다음 정류장 '+ahead.name+' '+meters((ahead.s-P.s)*dir) : road+' 따라 가는 중이에요'; }
   else if(mode==='subway'){ top = .35; a='2호선 타고 이동 중';
-    const toSt = (STATION_S-P.s)*dir;
-    b = hold>0 ? MAP.station.name+'역에 잠깐 정차했어요' : toSt>0 ? '다음 역 '+MAP.station.name+' '+meters(toSt)+' (6호선 환승)'
-      : depthNow<-.1 ? '당산철교로 올라가는 중이에요' : depthNow<.5 ? '땅 위로 나와서 당산철교 쪽으로 가요' : '다음 역 '+(dir>0?MAP.station.next:MAP.station.prev); }
+    const nextSt = STATIONS.filter(x=>(x.s-P.s)*dir>0).sort((p,q)=>(p.s-P.s)*dir-(q.s-P.s)*dir)[0], hereSt = STATIONS.find(x=>x.s===lastStop);
+    const xfer = st => st.lines && st.lines.length>1 ? ' ('+st.lines.slice(1).map(l=>l[0]+'호선').join(', ')+' 환승)' : '';
+    b = hold>0 && hereSt ? hereSt.name+'역에 잠깐 정차했어요' : nextSt ? '다음 역 '+nextSt.name+' '+meters((nextSt.s-P.s)*dir)+xfer(nextSt)
+      : depthNow<-.1 ? '고가 위를 달리는 중이에요' : depthNow<.5 ? '땅 위를 달리는 중이에요' : '다음 역으로 가는 중이에요'; }
   else if(mode==='bike'){ top=1.0; a='자전거 타는 중'; b = stopAt==='red' ? '신호 기다리는 중이에요' : road+' 따라 '+walkedText(walked)+' 달렸어요'; }
   else if(mode==='run'){ top=.8; a='하루는 지금 달리는 중'; b=road+' 따라 '+walkedText(walked)+' 뛰었어요'; }
   else if(mode==='walk'){ top=.8; a='하루는 지금 걷는 중'; b=road+' 따라 '+walkedText(walked)+' 걸었어요'; }
@@ -1048,7 +1244,8 @@ function frame(){
     XR.uR.value = ppu*1.35; XR.uD.value = depth+.3;
     XR.uTa.value.set(a3.x, a3.z); XR.uTb.value.set(b3.x, b3.z);
     XR.uS.value = xr;
-    for(let i=0;i<12;i++){ const en=ENTR[i]; if(!en){ XR.hh.value[i].set(0,0); continue; }
+    const near12 = ENTR.map(en=>({en, d:Math.hypot(en.wx-V.x, en.wz-V.z)})).sort((a,b)=>a.d-b.d).slice(0,12).map(o=>o.en);
+    for(let i=0;i<12;i++){ const en=near12[i]; if(!en){ XR.hh.value[i].set(0,0); continue; }
       const rx=en.wx-V.x, rz=en.wz-V.z, k=smooth((R-.4-Math.hypot(rx,rz))/1.4);
       XR.hc.value[i].set(rx,rz); XR.ha.value[i].set(en.hx,en.hz); XR.hh.value[i].set(.3*k,.5*k); } }
   renderer.render(scene,camera);
