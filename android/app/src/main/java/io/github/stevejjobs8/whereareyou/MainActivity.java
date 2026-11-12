@@ -97,6 +97,8 @@ public class MainActivity extends Activity {
         }
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             need.add(Manifest.permission.POST_NOTIFICATIONS);
+        if (Build.VERSION.SDK_INT >= 29 && checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED)
+            need.add(Manifest.permission.ACTIVITY_RECOGNITION);
         if (!need.isEmpty()) { requestPermissions(need.toArray(new String[0]), 7); return; }
         startSharing();
     }
