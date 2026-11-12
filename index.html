@@ -57,6 +57,7 @@ canvas:active{cursor:grabbing}
 /* 기본은 실서비스 화면(맵+말풍선만). 주소 끝에 ?dev 를 붙이면 개발용 조작판이 보임 */
 body:not(.dev) .controls, body:not(.dev) #gps, body:not(.dev) .live{display:none}
 body:not(.dev) .stage{padding-bottom:6px}
+body.app .top{display:none}
 #wx{margin:5px 0 0;font-size:13px;color:var(--pink-ink);line-height:1.35}
 #wx[hidden]{display:none}
 .controls{display:flex;flex-wrap:wrap;gap:10px 14px;justify-content:center;align-items:center;padding:8px 16px 18px}
@@ -86,7 +87,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 </style>
 </head>
 <body>
-<script>if(/[?&]dev\b/.test(location.search)) document.body.classList.add('dev');</script>
+<script>if(/[?&]dev\b/.test(location.search)) document.body.classList.add('dev'); if(/[?&]app\b/.test(location.search)) document.body.classList.add('app');</script>
 <header class="top">
   <h1>지금 너는 어디쯤</h1>
   <span class="live"><i aria-hidden="true"></i>실시간 미리보기</span>
@@ -1129,13 +1130,14 @@ const seat = (parent, x,y,z,s) => { if(doll.parent!==parent) parent.add(doll); d
 /* ================= 실제 위치 모드: 주소에 ?c=보는코드 가 있으면 Supabase에서 진짜 위치를 받아옴 ================= */
 const REALC = new URLSearchParams(location.search).get('c');
 const SB_URL = 'https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY = 'sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
-const RT = {act:'', sub:null, have:false, placed:false, x:0, z:0, gx:0, gz:0, tx:0, tz:1, speed:0, acc:2, at:0, off:false, err:false, lastPoll:-9, still:true, busy:false};
+const RT = {name:'', act:'', sub:null, have:false, placed:false, x:0, z:0, gx:0, gz:0, tx:0, tz:1, speed:0, acc:2, at:0, off:false, err:false, lastPoll:-9, still:true, busy:false};
 async function pollReal(){
   if(RT.busy) return; RT.busy = true;
   try{
     const r = await fetch(SB_URL+'/rest/v1/rpc/get_location', {method:'POST', headers:{'apikey':SB_KEY, 'Content-Type':'application/json'}, body:JSON.stringify({p_view_code:REALC})});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const rows = await r.json();
+    if(rows.length && rows[0].name) RT.name = rows[0].name;
     if(!rows.length || rows[0].lat==null){ RT.off = true; RT.err = false; return; }
     const q = rows[0], [x,z] = toLocal(q.lng, q.lat);
     RT.off = false; RT.err = false; RT.act = q.activity||''; RT.speed = q.speed||0; RT.acc = (q.accuracy||20)/10; RT.at = Date.parse(q.updated_at);
@@ -1145,6 +1147,9 @@ async function pollReal(){
   }catch(e){ RT.err = true; console.warn('위치 받기 실패', e); }
   finally{ RT.busy = false; }
 }
+/* 이름 + 은/는: 받침 있으면 '은' */
+function who(){ const n = RT.name; if(!n) return ''; const c = n.charCodeAt(n.length-1);
+  const j = (c>=0xAC00 && c<=0xD7A3) ? (((c-0xAC00)%28) ? '은' : '는') : '는'; return n + j + ' '; }
 function realStep(dt){
   const now = performance.now()/1000;               // 실제 시간 기준 (느린 폰에서도 3초마다)
   if(now-RT.lastPoll > 3){ RT.lastPoll = now; pollReal(); }
@@ -1270,12 +1275,12 @@ function frame(){
     const nm = roadNameNear(w.x, w.z), ago = RT.at ? Math.round((Date.now()-RT.at)/1000) : 0;
     const when = ago < 20 ? '방금 전' : ago < 120 ? ago+'초 전' : Math.round(ago/60)+'분 전';
     if(RT.err){ a='연결이 잠깐 끊겼어요'; b='다시 연결하는 중이에요'; }
-    else if(RT.off){ a='지금은 위치 공유가 꺼져 있어요'; b='상대방이 공유를 켜면 바로 보여요'; }
+    else if(RT.off){ a=(RT.name ? RT.name+'의 ' : '')+'위치 공유가 꺼져 있어요'; b='상대방이 공유를 켜면 바로 보여요'; }
     else if(!RT.have){ a='위치를 기다리는 중이에요'; b='잠시만 기다려 주세요'; }
-    else if(mode==='subway'){ a = '지하철 타고 이동 중';
+    else if(mode==='subway'){ a = who() + '지하철 타고 이동 중';
       const nx = STATIONS.filter(x=>(x.s-P.s)*dir>0).sort((p,q)=>(p.s-P.s)*dir-(q.s-P.s)*dir)[0];
       b = nx ? '다음 역 '+nx.name+'쯤 (땅속이라 위치는 추정이에요)' : '땅속이라 위치는 추정이에요'; }
-    else { a = RT.still ? '잠깐 멈춰 있어요' : mode==='bus' ? '버스나 차 타고 이동 중' : mode==='bike' ? '자전거 타는 중' : mode==='run' ? '뛰는 중' : '걷는 중';
+    else { a = who() + (RT.still ? '잠깐 멈춰 있어요' : mode==='bus' ? '버스나 차 타고 이동 중' : mode==='bike' ? '자전거 타는 중' : mode==='run' ? '뛰는 중' : '걷는 중');
       b = (nm ? nm+' 근처, ' : '') + when + ' 위치예요'; }
     c = ago > 300 && RT.have && !RT.off ? '한동안 새 위치가 오지 않았어요' : '';
   }
