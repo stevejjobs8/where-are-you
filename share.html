@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>내 위치 보내기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E3EBF6; --ink:#2C3150; --ink-soft:#646B8E; --card:#FFFFFF; --line:#CFD8EA;
+  --pink:#FF6F91; --pink-soft:#FFE0E8; --pink-ink:#B3264E; --focus:#5B6CFF; --green:#2E9E6A;
+  color-scheme:light; box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#1B2135; --ink:#EEF0FA; --ink-soft:#A4AACA; --card:#272F4D; --line:#3A4369;
+    --pink:#FF7FA0; --pink-soft:#4A2840; --pink-ink:#FFC2D2; --focus:#9AA6FF; --green:#6FD9A5; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#1B2135; --ink:#EEF0FA; --ink-soft:#A4AACA; --card:#272F4D; --line:#3A4369;
+  --pink:#FF7FA0; --pink-soft:#4A2840; --pink-ink:#FFC2D2; --focus:#9AA6FF; --green:#6FD9A5; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%}
+body{min-height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:'Gowun Dodum','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+  display:flex;flex-direction:column;align-items:center;padding:28px 20px 40px}
+main{width:100%;max-width:420px;display:flex;flex-direction:column;gap:18px}
+h1{font-family:'Jua','Gowun Dodum',sans-serif;font-weight:400;font-size:28px;margin:0}
+.lead{margin:0;color:var(--ink-soft);line-height:1.55}
+.card{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:20px}
+.status{display:flex;align-items:center;gap:10px;font-size:17px;margin:0 0 14px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--line);flex:none}
+.on .dot{background:var(--green)}
+@media (prefers-reduced-motion: no-preference){ .on .dot{animation:beat 1.6s ease-in-out infinite} @keyframes beat{50%{transform:scale(1.5);opacity:.5}} }
+.meta{margin:0;color:var(--ink-soft);font-size:14px;line-height:1.5}
+button{font:inherit;cursor:pointer;border-radius:999px}
+.toggle{width:100%;padding:16px;font-family:'Jua','Gowun Dodum',sans-serif;font-size:20px;border:0;background:var(--pink);color:#fff;margin-top:16px}
+.on .toggle{background:var(--card);color:var(--pink-ink);border:2px solid var(--pink)}
+.link{display:flex;gap:8px;margin-top:10px}
+.link input{flex:1;min-width:0;font:inherit;font-size:13px;padding:10px 12px;border-radius:12px;border:2px solid var(--line);background:var(--bg);color:var(--ink)}
+.small{padding:10px 14px;border:2px solid var(--line);background:var(--card);color:var(--ink);font-size:14px;white-space:nowrap}
+h2{font-family:'Jua','Gowun Dodum',sans-serif;font-weight:400;font-size:19px;margin:0 0 6px}
+.err{color:var(--pink-ink);font-size:14px;margin:10px 0 0;min-height:1em}
+button:focus-visible,input:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+  <h1>내 위치 보내기</h1>
+  <p class="lead">공유를 켜면 이 폰의 위치가 몇 초마다 전송되고, 아래 링크를 연 사람의 미니어처 지도에 내가 나타나요.</p>
+
+  <section class="card" id="box" aria-live="polite">
+    <p class="status"><span class="dot" aria-hidden="true"></span><span id="state">공유 꺼짐</span></p>
+    <p class="meta" id="meta">켜면 휴대폰이 위치 권한을 물어봐요. 허용해 주세요.</p>
+    <button class="toggle" id="toggle">위치 공유 시작</button>
+    <p class="err" id="err"></p>
+  </section>
+
+  <section class="card">
+    <h2>보여줄 사람에게 보낼 링크</h2>
+    <p class="meta">이 링크를 아는 사람만 내 위치를 볼 수 있어요. 공유를 끄면 링크로도 보이지 않아요.</p>
+    <div class="link"><input id="url" readonly value="공유를 처음 켜면 만들어져요" aria-label="보여줄 사람에게 보낼 링크"><button class="small" id="copy">복사</button></div>
+  </section>
+
+  <p class="meta">시험용 웹 버전이라 이 화면을 켜 둔 동안만 위치가 전송돼요. 화면을 끄거나 다른 앱으로 가면 멈춰요. 안드로이드 앱 버전에서는 꺼져 있어도 계속 보내져요.</p>
+</main>
+<script>
+const SB_URL = 'https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY = 'sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
+const $ = id => document.getElementById(id);
+const box = $('box'), stateEl = $('state'), metaEl = $('meta'), errEl = $('err'), btn = $('toggle'), urlEl = $('url');
+let creds = null, watchId = null, latest = null, sentAt = 0, timer = null, wake = null, on = false, sending = false;
+try{ creds = JSON.parse(localStorage.getItem('wy-share')||'null'); }catch(e){}
+const viewLink = () => creds ? location.origin + location.pathname.replace(/share\.html$/, '') + '?c=' + creds.view_code : '';
+if(creds) urlEl.value = viewLink();
+
+async function rpc(name, body){
+  const r = await fetch(SB_URL + '/rest/v1/rpc/' + name, {method:'POST', headers:{'apikey':SB_KEY, 'Content-Type':'application/json'}, body:JSON.stringify(body||{})});
+  const txt = await r.text();
+  if(!r.ok) throw new Error(name + ' ' + r.status + ' ' + txt.slice(0,160));
+  return txt ? JSON.parse(txt) : null;
+}
+async function ensureCreds(){
+  if(creds) return creds;
+  const rows = await rpc('create_share');
+  creds = Array.isArray(rows) ? rows[0] : rows;
+  localStorage.setItem('wy-share', JSON.stringify(creds));
+  urlEl.value = viewLink();
+  return creds;
+}
+function activityOf(speed){ if(speed==null) return 'unknown'; return speed < .5 ? 'still' : speed < 2.2 ? 'walk' : speed < 3.8 ? 'run' : speed < 7 ? 'bike' : 'vehicle'; }
+async function push(sharing){
+  if(!creds || sending) return; sending = true;
+  const c = latest && latest.coords;
+  try{
+    await rpc('push_location', {p_view_code:creds.view_code, p_write_key:creds.write_key,
+      p_lat: c ? c.latitude : null, p_lng: c ? c.longitude : null, p_accuracy: c ? c.accuracy : null,
+      p_speed: c && c.speed!=null ? c.speed : null, p_heading: c && c.heading!=null ? c.heading : null,
+      p_activity: c ? activityOf(c.speed) : null, p_sharing: sharing});
+    sentAt = Date.now(); errEl.textContent = '';
+  }catch(e){ errEl.textContent = '전송 실패: ' + e.message; }
+  finally{ sending = false; }
+}
+function render(){
+  box.classList.toggle('on', on);
+  stateEl.textContent = on ? '공유 중' : '공유 꺼짐';
+  btn.textContent = on ? '공유 멈추기' : '위치 공유 시작';
+  if(on){
+    const c = latest && latest.coords;
+    metaEl.textContent = c ? `정확도 약 ${Math.round(c.accuracy)}m, ${sentAt ? Math.round((Date.now()-sentAt)/1000)+'초 전 전송' : '전송 준비 중'}` : '위치를 찾는 중이에요';
+  }
+}
+async function start(){
+  if(!('geolocation' in navigator)){ errEl.textContent = '이 브라우저는 위치 기능을 지원하지 않아요.'; return; }
+  try{ await ensureCreds(); }catch(e){ errEl.textContent = '서버 연결 실패: ' + e.message; return; }
+  on = true; render();
+  watchId = navigator.geolocation.watchPosition(p=>{ latest = p; render(); },
+    e=>{ errEl.textContent = e.code===1 ? '위치 권한이 거부됐어요. 브라우저 설정에서 이 사이트의 위치 권한을 허용해 주세요.' : '위치를 가져오지 못했어요 (' + e.message + ')'; },
+    {enableHighAccuracy:true, maximumAge:2000, timeout:20000});
+  timer = setInterval(()=>{ if(latest) push(true); render(); }, 3000);
+  try{ if('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); }catch(e){}
+}
+async function stop(){
+  on = false; if(watchId!==null) navigator.geolocation.clearWatch(watchId); watchId = null; clearInterval(timer); timer = null;
+  try{ if(wake) await wake.release(); }catch(e){} wake = null;
+  latest = null; await push(false); render(); metaEl.textContent = '공유를 껐어요. 링크를 열어도 위치가 보이지 않아요.';
+}
+btn.addEventListener('click', ()=> on ? stop() : start());
+$('copy').addEventListener('click', async ()=>{
+  if(!creds){ errEl.textContent = '먼저 공유를 한 번 켜면 링크가 만들어져요.'; return; }
+  try{
+    if(navigator.share) await navigator.share({title:'지금 너는 어디쯤', url:viewLink()});
+    else { await navigator.clipboard.writeText(viewLink()); $('copy').textContent = '복사됨'; setTimeout(()=>$('copy').textContent='복사', 1500); }
+  }catch(e){ urlEl.select(); }
+});
+document.addEventListener('visibilitychange', async ()=>{ if(on && document.visibilityState==='visible'){ try{ if('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); }catch(e){} } });
+</script>
+</body>
+</html>
