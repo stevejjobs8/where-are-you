@@ -16,6 +16,8 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 
+import com.google.android.gms.location.ActivityRecognition;
+
 import org.json.JSONObject;
 
 import java.util.concurrent.ExecutorService;
@@ -30,14 +32,16 @@ public class LocationService extends Service {
     private LocationManager lm;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private volatile Location best;
-    private long lastSentFix = 0;
+    private volatile Location best;        // 가장 최근 위치
+    private volatile Location good;        // 정확도 60m 이내의 마지막 위치 (지하에선 이걸 유지)
+    private PendingIntent arIntent;
 
     private final LocationListener listener = new LocationListener() {
         @Override public void onLocationChanged(Location l) {
             Location b = best;
             // 더 최근이거나 더 정확한 쪽을 씀
-            if (b == null || l.getTime() > b.getTime() + 5000 || l.getAccuracy() <= b.getAccuracy() || l.getTime() > b.getTime()) best = l;
+            if (b == null || l.getTime() >= b.getTime()) best = l;
+            if (l.hasAccuracy() && l.getAccuracy() <= 60) good = l;
         }
         @Override public void onProviderEnabled(String p) {}
         @Override public void onProviderDisabled(String p) {}
@@ -46,8 +50,8 @@ public class LocationService extends Service {
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
-            Location l = best;
-            if (l != null && l.getTime() != lastSentFix) { lastSentFix = l.getTime(); push(l, true); }
+            Location l = good != null ? good : best;
+            if (l != null) push(l, true);
             handler.postDelayed(this, INTERVAL_MS);
         }
     };
@@ -77,6 +81,13 @@ public class LocationService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (Build.VERSION.SDK_INT < 29 || checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            try {
+                arIntent = PendingIntent.getBroadcast(this, 3, new Intent(this, ActivityReceiver.class),
+                        PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0));
+                ActivityRecognition.getClient(this).requestActivityUpdates(8000, arIntent);
+            } catch (SecurityException ignored) {}
+        }
         handler.removeCallbacks(tick);
         handler.post(tick);
         lastStatus = "위치를 찾는 중이에요";
@@ -97,18 +108,30 @@ public class LocationService extends Service {
                 o.put("p_accuracy", l != null && l.hasAccuracy() ? l.getAccuracy() : JSONObject.NULL);
                 o.put("p_speed", l != null && l.hasSpeed() ? l.getSpeed() : JSONObject.NULL);
                 o.put("p_heading", l != null && l.hasBearing() ? l.getBearing() : JSONObject.NULL);
-                o.put("p_activity", JSONObject.NULL);
+                o.put("p_activity", sharing ? currentActivity() : JSONObject.NULL);
                 o.put("p_sharing", sharing);
                 Supa.rpc("push_location", o.toString());
-                lastStatus = sharing ? ("보냄 (정확도 약 " + Math.round(l.getAccuracy()) + "m)") : "공유를 껐어요";
+                lastStatus = sharing ? ("보냄 (정확도 약 " + Math.round(l.getAccuracy()) + "m, 상태: " + currentActivity() + ")") : "공유를 껐어요";
             } catch (Exception e) {
                 lastStatus = "전송 실패: " + e.getMessage();
             }
         });
     }
 
+    /** 차량으로 움직이다 좋은 GPS가 40초 넘게 끊기면 지하철(지하)로 봄 */
+    private String currentActivity() {
+        long now = System.currentTimeMillis();
+        String a = ActivityReceiver.activity;
+        Location g = good;
+        long gpsAge = g == null ? Long.MAX_VALUE : now - g.getTime();
+        boolean recentVehicle = now - ActivityReceiver.lastVehicleAt < 5 * 60_000;
+        if (gpsAge > 40_000 && recentVehicle && !a.equals("walk") && !a.equals("run")) return "subway";
+        return a;
+    }
+
     @Override public void onDestroy() {
         handler.removeCallbacks(tick);
+        if (arIntent != null) try { ActivityRecognition.getClient(this).removeActivityUpdates(arIntent); } catch (SecurityException ignored) {}
         if (lm != null) lm.removeUpdates(listener);
         push(null, false);           // 서버에서 좌표 지우기
         io.shutdown();
