@@ -1129,7 +1129,7 @@ const seat = (parent, x,y,z,s) => { if(doll.parent!==parent) parent.add(doll); d
 /* ================= 실제 위치 모드: 주소에 ?c=보는코드 가 있으면 Supabase에서 진짜 위치를 받아옴 ================= */
 const REALC = new URLSearchParams(location.search).get('c');
 const SB_URL = 'https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY = 'sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
-const RT = {have:false, placed:false, x:0, z:0, gx:0, gz:0, tx:0, tz:1, speed:0, acc:2, at:0, off:false, err:false, lastPoll:-9, still:true, busy:false};
+const RT = {act:'', sub:null, have:false, placed:false, x:0, z:0, gx:0, gz:0, tx:0, tz:1, speed:0, acc:2, at:0, off:false, err:false, lastPoll:-9, still:true, busy:false};
 async function pollReal(){
   if(RT.busy) return; RT.busy = true;
   try{
@@ -1138,7 +1138,7 @@ async function pollReal(){
     const rows = await r.json();
     if(!rows.length || rows[0].lat==null){ RT.off = true; RT.err = false; return; }
     const q = rows[0], [x,z] = toLocal(q.lng, q.lat);
-    RT.off = false; RT.err = false; RT.speed = q.speed||0; RT.acc = (q.accuracy||20)/10; RT.at = Date.parse(q.updated_at);
+    RT.off = false; RT.err = false; RT.act = q.activity||''; RT.speed = q.speed||0; RT.acc = (q.accuracy||20)/10; RT.at = Date.parse(q.updated_at);
     const dead = RT.speed < .6 ? Math.max(2.0, RT.acc*.8) : .3;   // 멈춰 있으면 20m 안쪽 흔들림 무시
     if(!RT.have){ RT.have = true; RT.gx = RT.x = x; RT.gz = RT.z = z; }
     else if(Math.hypot(x-RT.gx, z-RT.gz) > dead){ RT.gx = x; RT.gz = z; }
@@ -1146,11 +1146,37 @@ async function pollReal(){
   finally{ RT.busy = false; }
 }
 function realStep(dt){
-  if(t-RT.lastPoll > 3){ RT.lastPoll = t; pollReal(); }
+  const now = performance.now()/1000;               // 실제 시간 기준 (느린 폰에서도 3초마다)
+  if(now-RT.lastPoll > 3){ RT.lastPoll = now; pollReal(); }
   const dx = RT.gx-RT.x, dz = RT.gz-RT.z, d = Math.hypot(dx,dz);
   if(d > .02){ const k = Math.min(1, dt*.9); RT.x += dx*k; RT.z += dz*k; if(d > .3){ RT.tx = dx/d; RT.tz = dz/d; } }
-  RT.still = RT.speed < .5 && d < .3;
-  mode = RT.speed > 7 ? 'bus' : RT.speed > 3.8 ? 'bike' : RT.speed > 2.2 ? 'run' : 'walk';
+  /* 폰 센서 판정(activity)을 우선, 없으면 속도로 추정 */
+  const A = RT.act;
+  RT.still = A==='still' || (!A || A==='unknown') && RT.speed < .5 && d < .3;
+  if(A==='subway') mode = 'subway';
+  else if(A==='vehicle') mode = 'bus';
+  else if(A==='bike') mode = 'bike';
+  else if(A==='run') mode = 'run';
+  else if(A==='walk' || A==='still') mode = 'walk';
+  else mode = RT.speed > 7 ? 'bus' : RT.speed > 3.8 ? 'bike' : RT.speed > 2.2 ? 'run' : 'walk';
+  /* 지하철: 땅속이라 GPS가 없음 → 마지막 위치 근처의 실제 선로를 찾아, 들어간 뒤 흐른 시간만큼 선로를 따라 추정 */
+  if(mode==='subway'){
+    if(!RT.sub){
+      let best=null;
+      for(const tl of readyTiles()) for(const r of tl.rails) for(let i=0;i<r.p.length-1;i++){ const a=r.p[i], b=r.p[i+1], ex=b[0]-a[0], ez=b[1]-a[1], L2=ex*ex+ez*ez||1e-9;
+        const u=Math.max(0,Math.min(1,((RT.x-a[0])*ex+(RT.z-a[1])*ez)/L2)), dd=Math.hypot(RT.x-a[0]-ex*u, RT.z-a[1]-ez*u); if(!best||dd<best.d) best={d:dd, r}; }
+      if(best && best.d < 5){
+        const path = new Path(best.r.p, [], best.r.p.map(()=>best.r.d));
+        const s0 = path.nearest(RT.x, RT.z).s, h = path.at(s0), sd = (h.hx*RT.tx + h.hz*RT.tz) >= 0 ? 1 : -1;
+        ROUTES.subway = path; refreshStops(); RT.sub = {s0, dir:sd, t0:now};
+      }
+    }
+    if(RT.sub){
+      const path = ROUTES.subway;
+      if(RT.sub.dir>0 && path.L - (RT.sub.s0 + (now-RT.sub.t0)*.9) < 30 && t-lastExtend > .4){ lastExtend = t; extendPath('subway'); }
+      dir = RT.sub.dir; P.s = D.s = Math.max(1, Math.min(path.L-1, RT.sub.s0 + dir*(now-RT.sub.t0)*.9));
+    } else mode = 'bus';
+  } else RT.sub = null;
   if(RT.have && !RT.placed){ RT.placed = true; V.x = RT.x; V.z = RT.z; lastDrawn = null; }
 }
 /* ================= 루프 ================= */
@@ -1163,7 +1189,7 @@ function frame(){
 
   /* 진짜 위치 이동 (경로를 따라 왕복) — 실제 위치 모드에선 건너뜀 */
   let speed = 0, moved = 0, depthNow = 0; stopAt='';
-  if(REALC){ realStep(dt); }
+  if(REALC){ realStep(dt); if(mode==='subway' && RT.sub) depthNow = ROUTES.subway.depth(P.s); }
   else {
   speed = {bus:1.8, subway:2.6, bike:2.0, run:1.4, walk:.7, rest:0}[mode] * (weather==='wind' && (mode==='walk'||mode==='run'||mode==='bike') ? .8 : 1);
   if(hold>0){ hold-=dt; stopAt='stop'; }
@@ -1187,7 +1213,7 @@ function frame(){
   }
 
   /* 화면 중심 */
-  const w = REALC ? {x:RT.x, z:RT.z, tx:RT.tx, tz:RT.tz} : worldPos(mode, D.s, dir);
+  const w = REALC && !(mode==='subway' && RT.sub) ? {x:RT.x, z:RT.z, tx:RT.tx, tz:RT.tz} : worldPos(mode, D.s, dir);
   if(REALC){ V.x += (w.x-V.x)*Math.min(1,dt*4); V.z += (w.z-V.z)*Math.min(1,dt*4); }
   else if(gpsOn || depthNow>.5 || !G.rawPos){ V.x += (w.x-V.x)*Math.min(1,dt*5); V.z += (w.z-V.z)*Math.min(1,dt*5); }
   else { V.x = G.rawPos.x; V.z = G.rawPos.z; }
@@ -1246,7 +1272,10 @@ function frame(){
     if(RT.err){ a='연결이 잠깐 끊겼어요'; b='다시 연결하는 중이에요'; }
     else if(RT.off){ a='지금은 위치 공유가 꺼져 있어요'; b='상대방이 공유를 켜면 바로 보여요'; }
     else if(!RT.have){ a='위치를 기다리는 중이에요'; b='잠시만 기다려 주세요'; }
-    else { a = RT.still ? '잠깐 멈춰 있어요' : mode==='bus' ? '차 타고 이동 중' : mode==='bike' ? '자전거 타는 중' : mode==='run' ? '뛰는 중' : '걷는 중';
+    else if(mode==='subway'){ a = '지하철 타고 이동 중';
+      const nx = STATIONS.filter(x=>(x.s-P.s)*dir>0).sort((p,q)=>(p.s-P.s)*dir-(q.s-P.s)*dir)[0];
+      b = nx ? '다음 역 '+nx.name+'쯤 (땅속이라 위치는 추정이에요)' : '땅속이라 위치는 추정이에요'; }
+    else { a = RT.still ? '잠깐 멈춰 있어요' : mode==='bus' ? '버스나 차 타고 이동 중' : mode==='bike' ? '자전거 타는 중' : mode==='run' ? '뛰는 중' : '걷는 중';
       b = (nm ? nm+' 근처, ' : '') + when + ' 위치예요'; }
     c = ago > 300 && RT.have && !RT.off ? '한동안 새 위치가 오지 않았어요' : '';
   }
