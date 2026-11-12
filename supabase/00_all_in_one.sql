@@ -86,6 +86,8 @@ begin
   if not found then raise exception 'invalid code'; end if;
   select view_code into other from pair_invite
    where code = upper(replace(replace(p_code,'-',''),' ','')) and expires_at > now();
+  if other is null and to_regclass('public.device_invite') is not null
+     and exists (select 1 from device_invite where code = upper(replace(replace(p_code,'-',''),' ',''))) then raise exception 'device code'; end if;
   if other is null then raise exception 'invite expired'; end if;
   if other = p_view_code then raise exception 'own code'; end if;
   update live_location set partner = other where view_code = p_view_code;
@@ -207,6 +209,7 @@ returns text language plpgsql security definer set search_path = public, extensi
 declare o text; tk text := encode(gen_random_bytes(32),'hex');
 begin
   select owner into o from device_invite where code = upper(replace(replace(p_code,'-',''),' ','')) and expires_at > now();
+  if o is null and exists (select 1 from pair_invite where code = upper(replace(replace(p_code,'-',''),' ',''))) then raise exception 'pair code'; end if;
   if o is null then raise exception 'invite expired'; end if;
   delete from device_invite where owner = o;
   insert into viewer_device(token, owner, label) values (tk, o, left(coalesce(p_label,'웹 브라우저'), 60));

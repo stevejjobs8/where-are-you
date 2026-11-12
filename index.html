@@ -1180,7 +1180,7 @@ async function pollReal(){
       const label = (navigator.userAgentData && navigator.userAgentData.platform) || (/Android/.test(navigator.userAgent) ? 'Android 브라우저' : /iPhone|iPad/.test(navigator.userAgent) ? 'iOS 브라우저' : 'PC 브라우저');
       const r = await fetch(SB_URL+'/rest/v1/rpc/device_link_accept', {method:'POST', headers:{'apikey':SB_KEY,'Content-Type':'application/json'}, body:JSON.stringify({p_code:document.getElementById('lcode').value, p_label:label})});
       const tx = await r.text();
-      if(!r.ok) throw new Error(/invite expired/.test(tx) ? '코드가 틀렸거나 10분이 지났어요' : '연결 실패 ('+r.status+')');
+      if(!r.ok) throw new Error(/pair code/.test(tx) ? '이건 짝꿍 초대 코드예요. 앱의 더보기 → 웹으로 보기 연결에서 받은 코드를 넣어주세요' : /invite expired/.test(tx) ? '코드가 틀렸거나 10분이 지났어요' : '연결 실패 ('+r.status+')');
       localStorage.setItem('wy-device', JSON.parse(tx)); location.reload();
     }catch(e){ err.textContent = e.message; }
   });

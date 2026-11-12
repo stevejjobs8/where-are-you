@@ -170,7 +170,7 @@ $('saveName').addEventListener('click', async ()=>{
 $('pair').addEventListener('click', async ()=>{
   try{ await ensureCreds(); await rpc('pair_accept', {p_code:$('code').value, p_view_code:creds.view_code, p_write_key:creds.write_key});
     simMsg.textContent = '앱과 연결됐어요! 이제 아래 버튼으로 움직여 보세요.'; }
-  catch(e){ simMsg.textContent = /invite expired/.test(e.message) ? '코드가 틀렸거나 10분이 지났어요' : /own code/.test(e.message) ? '같은 기기에서 만든 코드예요' : '연결 실패: ' + e.message; }
+  catch(e){ simMsg.textContent = /device code/.test(e.message) ? '이건 웹 연결 코드예요. 앱의 짝꿍 연결 → 초대 코드 만들기에서 받은 코드를 넣어주세요' : /invite expired/.test(e.message) ? '코드가 틀렸거나 10분이 지났어요' : /own code/.test(e.message) ? '같은 기기에서 만든 코드예요' : '연결 실패: ' + e.message; }
 });
 document.querySelectorAll('[data-sim]').forEach(b=>b.addEventListener('click', async ()=>{
   const kind = b.dataset.sim;

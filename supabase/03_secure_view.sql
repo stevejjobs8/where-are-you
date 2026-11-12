@@ -86,6 +86,7 @@ returns text language plpgsql security definer set search_path = public, extensi
 declare o text; tk text := encode(gen_random_bytes(32),'hex');
 begin
   select owner into o from device_invite where code = upper(replace(replace(p_code,'-',''),' ','')) and expires_at > now();
+  if o is null and exists (select 1 from pair_invite where code = upper(replace(replace(p_code,'-',''),' ',''))) then raise exception 'pair code'; end if;
   if o is null then raise exception 'invite expired'; end if;
   delete from device_invite where owner = o;
   insert into viewer_device(token, owner, label) values (tk, o, left(coalesce(p_label,'웹 브라우저'), 60));

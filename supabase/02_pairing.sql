@@ -42,6 +42,8 @@ begin
   if not found then raise exception 'invalid code'; end if;
   select view_code into other from pair_invite
    where code = upper(replace(replace(p_code,'-',''),' ','')) and expires_at > now();
+  if other is null and to_regclass('public.device_invite') is not null
+     and exists (select 1 from device_invite where code = upper(replace(replace(p_code,'-',''),' ',''))) then raise exception 'device code'; end if;
   if other is null then raise exception 'invite expired'; end if;
   if other = p_view_code then raise exception 'own code'; end if;
   update live_location set partner = other where view_code = p_view_code;

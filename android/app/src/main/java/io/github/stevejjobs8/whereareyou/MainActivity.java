@@ -375,7 +375,7 @@ public class MainActivity extends Activity {
             try { j.run(); }
             catch (Exception e) {
                 String m = String.valueOf(e.getMessage());
-                String nice = m.contains("invite expired") ? "코드가 틀렸거나 10분이 지났어요" : m.contains("own code") ? "내가 만든 코드는 입력할 수 없어요" : "서버 연결 실패: " + m;
+                String nice = m.contains("device code") ? "이건 웹 연결 코드예요. 짝꿍 앱의 '초대 코드 만들기'에서 받은 코드를 넣어주세요" : m.contains("invite expired") ? "코드가 틀렸거나 10분이 지났어요" : m.contains("own code") ? "내가 만든 코드는 입력할 수 없어요" : "서버 연결 실패: " + m;
                 ui.post(() -> status.setText(nice));
             }
         }).start();
