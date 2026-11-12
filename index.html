@@ -1052,6 +1052,7 @@ function gpsStep(dt, vel, underground){
   D.s = Math.max(0, Math.min(routeOf(mode).L, D.s));
 }
 /* ================= 카메라 ================= */
+const ZMIN = .12;   // 작을수록 더 가까이 확대
 let dist=80, zoom=1, az=1.2, el=.62, azT=az, elT=el;
 const VIEW_EL = {top:1.45, tilt:.62, side:.2};
 const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
@@ -1063,7 +1064,7 @@ function resize(){
   dist = Math.max((R*.82/fill)/tt, (R*1.08/fill)/(tt*camera.aspect));
 }
 new ResizeObserver(resize).observe(stage); resize();
-canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoom = clamp(zoom*Math.exp(e.deltaY*.0012), .45, 1.5); }, {passive:false});
+canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoom = clamp(zoom*Math.exp(e.deltaY*.0012), ZMIN, 1.5); }, {passive:false});
 let dragging=false, px0=0, py0=0;
 /* 한 손가락: 회전·기울기 / 두 손가락: 핀치 확대·축소 */
 const pts = new Map(); let pinch0 = 0, zoom0 = 1;
@@ -1076,7 +1077,7 @@ canvas.addEventListener('pointerdown', e=>{
 canvas.addEventListener('pointermove', e=>{
   if(!pts.has(e.pointerId)) return;
   pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
-  if(pts.size>=2){ const d = pinchDist(); if(pinch0>0 && d>0) zoom = clamp(zoom0*pinch0/d, .45, 1.5); return; }
+  if(pts.size>=2){ const d = pinchDist(); if(pinch0>0 && d>0) zoom = clamp(zoom0*pinch0/d, ZMIN, 1.5); return; }
   if(!dragging) return;
   azT -= (e.clientX-px0)*.008; elT = clamp(elT+(e.clientY-py0)*.005, 0, 1.45); az=azT; el=elT; px0=e.clientX; py0=e.clientY; });
 ['pointerup','pointercancel','pointerleave'].forEach(tp=>canvas.addEventListener(tp, e=>{
