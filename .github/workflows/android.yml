@@ -13,6 +13,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_KS: ${{ secrets.KEYSTORE_B64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -25,8 +27,16 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      - name: Restore stable signing key
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+        if: env.HAS_KS == 'true'
+        run: echo "$KS_B64" | base64 -d > android/app/stable.keystore
+
       - name: Build debug APK
         working-directory: android
+        env:
+          KS_PASS: ${{ secrets.KS_PASS }}
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - uses: actions/upload-artifact@v4

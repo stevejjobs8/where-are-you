@@ -10,8 +10,23 @@ android {
         applicationId 'io.github.stevejjobs8.whereareyou'
         minSdk 26
         targetSdk 34
-        versionCode 2
-        versionName '0.2'
+        versionCode 3
+        versionName '0.3'
+    }
+
+    signingConfigs {
+        stable {
+            storeFile file('stable.keystore')
+            storePassword System.getenv('KS_PASS') ?: ''
+            keyAlias 'whereareyou'
+            keyPassword System.getenv('KS_PASS') ?: ''
+        }
+    }
+    buildTypes {
+        debug {
+            // 고정 서명 열쇠가 있으면 그걸로 서명 → 새 버전을 덮어쓰기 설치 가능
+            if (file('stable.keystore').exists()) signingConfig signingConfigs.stable
+        }
     }
 
     compileOptions {
