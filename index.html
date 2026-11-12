@@ -54,6 +54,9 @@ canvas:active{cursor:grabbing}
 .views button:hover{border-color:var(--pink)}
 .chip{position:absolute;left:14px;top:12px;font:inherit;font-size:14px;background:var(--card);color:var(--ink-soft);border:2px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
 .chip[aria-pressed="true"]{color:var(--pink-ink);background:var(--pink-soft)}
+/* 기본은 실서비스 화면(맵+말풍선만). 주소 끝에 ?dev 를 붙이면 개발용 조작판이 보임 */
+body:not(.dev) .controls, body:not(.dev) #gps, body:not(.dev) .live{display:none}
+body:not(.dev) .stage{padding-bottom:6px}
 #wx{margin:5px 0 0;font-size:13px;color:var(--pink-ink);line-height:1.35}
 #wx[hidden]{display:none}
 .controls{display:flex;flex-wrap:wrap;gap:10px 14px;justify-content:center;align-items:center;padding:8px 16px 18px}
@@ -83,6 +86,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 </style>
 </head>
 <body>
+<script>if(/[?&]dev\b/.test(location.search)) document.body.classList.add('dev');</script>
 <header class="top">
   <h1>지금 너는 어디쯤</h1>
   <span class="live"><i aria-hidden="true"></i>실시간 미리보기</span>
