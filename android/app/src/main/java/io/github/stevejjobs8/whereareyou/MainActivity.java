@@ -20,6 +20,8 @@ import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -62,7 +64,20 @@ public class MainActivity extends Activity {
         WebSettings ws = web.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
-        web.setWebViewClient(new WebViewClient());
+        // 우리 지도 페이지만 앱 안에서 열고, 다른 링크는 바깥 브라우저로 (인증 정보 보호)
+        web.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                if (r.getUrl().toString().startsWith(MAP_BASE)) return false;
+                startActivity(new Intent(Intent.ACTION_VIEW, r.getUrl())); return true;
+            }
+        });
+        // 지도 페이지가 짝꿍 위치를 받을 때 쓸 내 인증 정보 (URL에 넣지 않음)
+        web.addJavascriptInterface(new Object() {
+            @JavascriptInterface public String auth() {
+                try { return new JSONObject().put("view", sp.getString("view_code", "")).put("write", sp.getString("write_key", "")).toString(); }
+                catch (Exception e) { return "{}"; }
+            }
+        }, "AndroidBridge");
         web.setBackgroundColor(Color.parseColor("#E3EBF6"));
         top.addView(web, new FrameLayout.LayoutParams(-1, -1));
         empty = text("짝꿍을 연결하면 여기에 그 사람이 미니어처 지도로 보여요", 17, "#646B8E");
@@ -95,8 +110,8 @@ public class MainActivity extends Activity {
         pairBtn.setOnClickListener(v -> pairMenu());
         Button nameBtn = pill("내 이름", false);
         nameBtn.setOnClickListener(v -> askName(false));
-        Button more = pill("배터리 설정", false);
-        more.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))));
+        Button more = pill("더보기", false);
+        more.setOnClickListener(v -> moreMenu());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(44), 1f); lp.setMargins(0, 0, dp(8), 0);
         row.addView(pairBtn, lp);
         LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(44), 1f); lp2.setMargins(0, 0, dp(8), 0);
@@ -113,7 +128,68 @@ public class MainActivity extends Activity {
         if (sp.getString("name", null) == null) askName(true);
     }
 
-    @Override protected void onResume() { super.onResume(); refreshPartner(); }
+    @Override protected void onResume() { super.onResume(); refreshPartner(); accessSummary(); }
+
+    /* ---------- 내 위치를 본 기록 (최근 30일, 모아서 알림) ---------- */
+    private void accessSummary() {
+        if (sp.getString("view_code", null) == null) return;
+        bg(() -> {
+            JSONArray a = new JSONArray(Supa.rpc("my_access_summary", auth().toString()));
+            if (a.length() == 0) return;
+            StringBuilder sb = new StringBuilder("최근 30일 동안 ");
+            for (int i = 0; i < a.length(); i++) { JSONObject o = a.getJSONObject(i); if (i > 0) sb.append(", "); sb.append(o.optString("viewer_name", "짝꿍")).append("이(가) ").append(o.optLong("views")).append("번"); }
+            sb.append(" 내 위치를 봤어요");
+            String msg = sb.toString();
+            ui.post(() -> { if (!sp.getBoolean("on", false)) status.setText(msg); else LocationService.lastStatus = msg; });
+        });
+    }
+
+    /* ---------- 더보기 ---------- */
+    private void moreMenu() {
+        String[] items = {"웹으로 보기 연결", "연결된 웹 브라우저 모두 끊기", "짝꿍 연결 끊기", "배터리 설정 (끊김 방지)", "약관과 개인정보처리방침", "내 정보 완전히 삭제"};
+        new AlertDialog.Builder(this).setTitle("더보기").setItems(items, (d, w) -> {
+            if (w == 0) withCreds(this::linkWeb);
+            else if (w == 1) withCreds(() -> bg(() -> { Supa.rpc("devices_revoke_all", auth().toString()); ui.post(() -> status.setText("연결된 웹 브라우저를 모두 끊었어요")); }));
+            else if (w == 2) confirm("짝꿍 연결을 끊을까요? 서로의 위치가 더 이상 보이지 않아요.", () -> bg(() -> {
+                Supa.rpc("unpair", auth().toString());
+                sp.edit().remove("partner").remove("partner_name").apply();
+                ui.post(() -> { loadedPartner = null; web.loadUrl("about:blank"); status.setText("짝꿍 연결을 끊었어요"); render(); }); }));
+            else if (w == 3) startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+            else if (w == 4) startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(MAP_BASE + "terms.html")));
+            else if (w == 5) confirm("서버에서 내 위치, 이름, 짝꿍 연결, 열람 기록을 모두 지울까요? 되돌릴 수 없어요.", () -> {
+                stopService(new Intent(this, LocationService.class));
+                bg(() -> {
+                    if (sp.getString("view_code", null) != null) Supa.rpc("delete_me", auth().toString());
+                    sp.edit().clear().apply();
+                    ui.post(() -> { loadedPartner = null; web.loadUrl("about:blank"); status.setText("내 정보를 모두 지웠어요"); render(); });
+                });
+            });
+        }).show();
+    }
+
+    private void linkWeb() {
+        bg(() -> {
+            String c = Supa.rpc("device_link_create", auth().toString()).trim().replace("\"", "");
+            String shown = c.length() == 8 ? c.substring(0, 4) + "-" + c.substring(4) : c;
+            ui.post(() -> new AlertDialog.Builder(this).setTitle("웹으로 보기 연결")
+                    .setMessage("PC나 다른 기기의 브라우저에서\n" + MAP_BASE + "\n을 열고 이 코드를 입력하세요.\n\n" + shown + "\n\n10분 동안 한 번만 쓸 수 있고, 그 브라우저에서만 짝꿍 위치가 보여요.")
+                    .setPositiveButton("확인", null).show());
+        });
+    }
+
+    private void confirm(String msg, Runnable yes) {
+        new AlertDialog.Builder(this).setMessage(msg).setPositiveButton("확인", (d, w) -> yes.run()).setNegativeButton("취소", null).show();
+    }
+
+    /* ---------- 처음 공유 전 동의 ---------- */
+    private void askConsent(Runnable ok) {
+        if (sp.getBoolean("consent", false)) { ok.run(); return; }
+        new AlertDialog.Builder(this).setTitle("위치 공유 동의")
+                .setMessage("• 만 14세 이상만 이용할 수 있어요.\n• 공유를 켜 둔 동안 이 폰의 위치를 몇 초마다 수집해, 연결된 짝꿍(앱과 짝꿍이 연결한 웹 브라우저)에게 제공해요.\n• 서버에는 가장 최근 위치 한 개만 남고, 공유를 끄면 지워져요.\n• 짝꿍이 내 위치를 본 횟수는 기록되어 앱에서 30일 단위로 알려드려요 (6개월 보관).\n• 언제든 '더보기 → 내 정보 완전히 삭제'로 모두 지울 수 있어요.")
+                .setPositiveButton("만 14세 이상이며 동의해요", (d, w) -> { sp.edit().putBoolean("consent", true).putLong("consent_at", System.currentTimeMillis()).apply(); ok.run(); })
+                .setNeutralButton("약관 보기", (d, w) -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(MAP_BASE + "terms.html"))))
+                .setNegativeButton("취소", null).show();
+    }
 
     /* ---------- 공유 켜기/끄기 ---------- */
     private void onToggle() {
@@ -132,8 +208,10 @@ public class MainActivity extends Activity {
             need.add(Manifest.permission.POST_NOTIFICATIONS);
         if (Build.VERSION.SDK_INT >= 29 && checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED)
             need.add(Manifest.permission.ACTIVITY_RECOGNITION);
-        if (!need.isEmpty()) { requestPermissions(need.toArray(new String[0]), 7); return; }
-        withCreds(this::launch);
+        askConsent(() -> {
+            if (!need.isEmpty()) { requestPermissions(need.toArray(new String[0]), 7); return; }
+            withCreds(this::launch);
+        });
     }
 
     @Override public void onRequestPermissionsResult(int rc, String[] p, int[] r) {
@@ -275,7 +353,7 @@ public class MainActivity extends Activity {
         pairBtn.setText(partner != null ? (pn != null ? pn : "짝꿍") + " 연결됨" : "짝꿍 연결");
         if (partner != null && !partner.equals(loadedPartner)) {
             loadedPartner = partner;
-            web.loadUrl(MAP_BASE + "?c=" + partner + "&app=1");
+            web.loadUrl(MAP_BASE + "?app=1");
         }
         empty.setVisibility(partner != null ? View.GONE : View.VISIBLE);
         if (!on && status.getText().length() == 0) status.setText("공유를 켜면 짝꿍 화면에 내가 나타나요");
