@@ -3,6 +3,8 @@ package io.github.stevejjobs8.whereareyou;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -173,8 +175,16 @@ public class MainActivity extends Activity {
             String shown = c.length() == 8 ? c.substring(0, 4) + "-" + c.substring(4) : c;
             ui.post(() -> new AlertDialog.Builder(this).setTitle("웹으로 보기 연결")
                     .setMessage("PC나 다른 기기의 브라우저에서\n" + MAP_BASE + "\n을 열고 이 코드를 입력하세요.\n\n" + shown + "\n\n10분 동안 한 번만 쓸 수 있고, 그 브라우저에서만 짝꿍 위치가 보여요.")
-                    .setPositiveButton("확인", null).show());
+                    .setPositiveButton("코드 복사", (d, w) -> copy(shown))
+                    .setNegativeButton("닫기", null).show());
         });
+    }
+
+    /** 코드만 클립보드에 복사 (다른 글자 없이) */
+    private void copy(String code) {
+        ClipboardManager cm = getSystemService(ClipboardManager.class);
+        cm.setPrimaryClip(ClipData.newPlainText("code", code));
+        status.setText("코드를 복사했어요: " + code);
     }
 
     private void confirm(String msg, Runnable yes) {
@@ -282,9 +292,9 @@ public class MainActivity extends Activity {
                 inviteDialog = new AlertDialog.Builder(this)
                         .setTitle("초대 코드")
                         .setMessage(shown + "\n\n짝꿍 앱에서 '코드 입력하기'에 이 코드를 넣어 주세요. 10분 동안 한 번만 쓸 수 있어요.")
-                        .setPositiveButton("코드 보내기", (d, w) -> {
-                            Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain")
-                                    .putExtra(Intent.EXTRA_TEXT, "지금 너는 어디쯤 짝꿍 초대 코드: " + shown);
+                        .setPositiveButton("코드 복사", (d, w) -> copy(shown))
+                        .setNeutralButton("코드 보내기", (d, w) -> {
+                            Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, shown);
                             startActivity(Intent.createChooser(i, "초대 코드 보내기"));
                         })
                         .setNegativeButton("닫기", null)
