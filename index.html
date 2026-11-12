@@ -1126,6 +1126,33 @@ pickStyle(saved); pickMode('bus');
 let lastText=''; const say=(a,b,c)=>{ const k=a+'|'+b+'|'+c; if(k===lastText) return; lastText=k; msg.textContent=a; sub.textContent=b; wxEl.textContent=c; wxEl.hidden=!c; };
 const seat = (parent, x,y,z,s) => { if(doll.parent!==parent) parent.add(doll); doll.position.set(x,y,z); doll.scale.setScalar(s); };
 
+/* ================= 실제 위치 모드: 주소에 ?c=보는코드 가 있으면 Supabase에서 진짜 위치를 받아옴 ================= */
+const REALC = new URLSearchParams(location.search).get('c');
+const SB_URL = 'https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY = 'sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
+const RT = {have:false, placed:false, x:0, z:0, gx:0, gz:0, tx:0, tz:1, speed:0, acc:2, at:0, off:false, err:false, lastPoll:-9, still:true, busy:false};
+async function pollReal(){
+  if(RT.busy) return; RT.busy = true;
+  try{
+    const r = await fetch(SB_URL+'/rest/v1/rpc/get_location', {method:'POST', headers:{'apikey':SB_KEY, 'Content-Type':'application/json'}, body:JSON.stringify({p_view_code:REALC})});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const rows = await r.json();
+    if(!rows.length || rows[0].lat==null){ RT.off = true; RT.err = false; return; }
+    const q = rows[0], [x,z] = toLocal(q.lng, q.lat);
+    RT.off = false; RT.err = false; RT.speed = q.speed||0; RT.acc = (q.accuracy||20)/10; RT.at = Date.parse(q.updated_at);
+    const dead = RT.speed < .6 ? Math.max(2.0, RT.acc*.8) : .3;   // 멈춰 있으면 20m 안쪽 흔들림 무시
+    if(!RT.have){ RT.have = true; RT.gx = RT.x = x; RT.gz = RT.z = z; }
+    else if(Math.hypot(x-RT.gx, z-RT.gz) > dead){ RT.gx = x; RT.gz = z; }
+  }catch(e){ RT.err = true; console.warn('위치 받기 실패', e); }
+  finally{ RT.busy = false; }
+}
+function realStep(dt){
+  if(t-RT.lastPoll > 3){ RT.lastPoll = t; pollReal(); }
+  const dx = RT.gx-RT.x, dz = RT.gz-RT.z, d = Math.hypot(dx,dz);
+  if(d > .02){ const k = Math.min(1, dt*.9); RT.x += dx*k; RT.z += dz*k; if(d > .3){ RT.tx = dx/d; RT.tz = dz/d; } }
+  RT.still = RT.speed < .5 && d < .3;
+  mode = RT.speed > 7 ? 'bus' : RT.speed > 3.8 ? 'bike' : RT.speed > 2.2 ? 'run' : 'walk';
+  if(RT.have && !RT.placed){ RT.placed = true; V.x = RT.x; V.z = RT.z; lastDrawn = null; }
+}
 /* ================= 루프 ================= */
 const clock = new THREE.Clock(); let u=0;
 function frame(){
@@ -1134,9 +1161,11 @@ function frame(){
   windAmt += ((weather==='wind'?1:weather==='rain'?.35:0)-windAmt)*Math.min(1,dt*2);
   const path = routeOf(mode);
 
-  /* 진짜 위치 이동 (경로를 따라 왕복) */
-  const speed = {bus:1.8, subway:2.6, bike:2.0, run:1.4, walk:.7, rest:0}[mode] * (weather==='wind' && (mode==='walk'||mode==='run'||mode==='bike') ? .8 : 1);
-  stopAt=''; let moved=0;
+  /* 진짜 위치 이동 (경로를 따라 왕복) — 실제 위치 모드에선 건너뜀 */
+  let speed = 0, moved = 0, depthNow = 0; stopAt='';
+  if(REALC){ realStep(dt); }
+  else {
+  speed = {bus:1.8, subway:2.6, bike:2.0, run:1.4, walk:.7, rest:0}[mode] * (weather==='wind' && (mode==='walk'||mode==='run'||mode==='bike') ? .8 : 1);
   if(hold>0){ hold-=dt; stopAt='stop'; }
   else if(speed>0){
     let ns = P.s + dir*speed*dt;
@@ -1153,12 +1182,14 @@ function frame(){
     if(ns < 1.5){ ns = 1.5; dir = 1; served=null; }
     moved = ns-P.s; walked += Math.abs(moved); P.s = ns;
   }
-  const depthNow = mode==='subway' ? path.depth(P.s) : 0;
+  depthNow = mode==='subway' ? path.depth(P.s) : 0;
   gpsStep(dt, dt>0 ? moved/dt : 0, depthNow>.5);
+  }
 
   /* 화면 중심 */
-  const w = worldPos(mode, D.s, dir);
-  if(gpsOn || depthNow>.5 || !G.rawPos){ V.x += (w.x-V.x)*Math.min(1,dt*5); V.z += (w.z-V.z)*Math.min(1,dt*5); }
+  const w = REALC ? {x:RT.x, z:RT.z, tx:RT.tx, tz:RT.tz} : worldPos(mode, D.s, dir);
+  if(REALC){ V.x += (w.x-V.x)*Math.min(1,dt*4); V.z += (w.z-V.z)*Math.min(1,dt*4); }
+  else if(gpsOn || depthNow>.5 || !G.rawPos){ V.x += (w.x-V.x)*Math.min(1,dt*5); V.z += (w.z-V.z)*Math.min(1,dt*5); }
   else { V.x = G.rawPos.x; V.z = G.rawPos.z; }
   if(!lastDrawn || Math.abs(lastDrawn.x-V.x)>.004 || Math.abs(lastDrawn.z-V.z)>.004){ drawGround(V); lastDrawn={x:V.x,z:V.z}; }
   if(t-lastTiles > .5){ lastTiles = t; ensureTiles(V); }
@@ -1187,7 +1218,7 @@ function frame(){
   else if(mode==='bike'){ seat(bike, 0,.47-.24*.8,-.12,.8); doll.rotation.y=0; poseDoll(doll, still?'idleBike':'bike', t, weather);
     if(still){ const ud=doll.userData; ud.legs[0].rotation.x=-1.0; ud.legs[1].rotation.x=.15; ud.arms[0].rotation.x=ud.arms[1].rotation.x=-1.25; ud.torso.rotation.x=.3; } }
   else if(mode==='rest'){ seat(world, w.x-V.x,.28-.24*.8,w.z-V.z,.8); doll.rotation.y = head - Math.PI/2; poseDoll(doll,'bench',t,weather); }
-  else { seat(world, w.x-V.x,.02,w.z-V.z,.8); doll.rotation.y = head; poseDoll(doll, mode==='run'?'run':'walk', t, weather); }
+  else { seat(world, w.x-V.x,.02,w.z-V.z,.8); doll.rotation.y = head; poseDoll(doll, REALC && RT.still ? 'idle' : mode==='run'?'run':'walk', t, weather); }
 
   /* 말풍선 */
   let a,b,c='', top;
@@ -1208,7 +1239,17 @@ function frame(){
   if(weather==='rain') c = inside ? '밖에는 비가 와요' : mode==='bike' ? '비 맞으면서 달리는 중이에요' : '비가 와서 우산 썼어요';
   else if(weather==='wind') c = inside ? '밖에 바람이 많이 불어요' : (mode==='walk'||mode==='run') ? '바람이 세서 몸을 숙이고 가요' : '바람에 머리가 날려요';
   else if(weather==='snow') c = inside ? '밖에는 눈이 와요' : '눈이 와서 목도리 했어요';
-  if(!gpsOn && depthNow<=.5) c = (c?c+'. ':'') + '지금은 GPS 원본 그대로예요';
+  if(!gpsOn && depthNow<=.5 && !REALC) c = (c?c+'. ':'') + '지금은 GPS 원본 그대로예요';
+  if(REALC){
+    const nm = roadNameNear(w.x, w.z), ago = RT.at ? Math.round((Date.now()-RT.at)/1000) : 0;
+    const when = ago < 20 ? '방금 전' : ago < 120 ? ago+'초 전' : Math.round(ago/60)+'분 전';
+    if(RT.err){ a='연결이 잠깐 끊겼어요'; b='다시 연결하는 중이에요'; }
+    else if(RT.off){ a='지금은 위치 공유가 꺼져 있어요'; b='상대방이 공유를 켜면 바로 보여요'; }
+    else if(!RT.have){ a='위치를 기다리는 중이에요'; b='잠시만 기다려 주세요'; }
+    else { a = RT.still ? '잠깐 멈춰 있어요' : mode==='bus' ? '차 타고 이동 중' : mode==='bike' ? '자전거 타는 중' : mode==='run' ? '뛰는 중' : '걷는 중';
+      b = (nm ? nm+' 근처, ' : '') + when + ' 위치예요'; }
+    c = ago > 300 && RT.have && !RT.off ? '한동안 새 위치가 오지 않았어요' : '';
+  }
   say(a,b,c);
 
   const cx = w.x-V.x, cz = w.z-V.z;
