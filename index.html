@@ -118,6 +118,14 @@ body:not(.dev) .hint{display:none}
   body:not(.dev) #sub{font-size:12px;line-height:1.45;margin-top:3px}
   body:not(.dev) #wx{font-size:11.5px;line-height:1.4;margin-top:3px}
 }
+
+/* Live view: no old coordinates or pretend motion when sharing is unavailable. */
+.scene-empty{position:absolute;inset:84px 0 18px;z-index:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px 28px;pointer-events:none}
+.scene-empty[hidden]{display:none}
+.scene-empty-inner{max-width:300px}
+.scene-empty-title{margin:0 0 8px;font:400 20px/1.4 'Jua','Gowun Dodum',sans-serif}
+.scene-empty-desc{margin:0;color:var(--ink-soft);font-size:13px;line-height:1.65}
+.stage.location-unavailable canvas,.stage.location-unavailable .bubble{visibility:hidden}
 </style>
 </head>
 <body>
@@ -139,6 +147,12 @@ body:not(.dev) .hint{display:none}
     </div>
   </header>
   <div class="bubble" id="bubble" aria-live="polite"><p id="msg">불러오는 중</p><p id="sub"></p><p id="wx" hidden></p></div>
+  <div class="scene-empty" id="scene-empty" hidden aria-live="polite">
+    <div class="scene-empty-inner">
+      <p class="scene-empty-title" id="scene-empty-title">위치를 기다리고 있어요</p>
+      <p class="scene-empty-desc" id="scene-empty-desc">위치가 도착하면 여기에 작은 동네가 나타나요.</p>
+    </div>
+  </div>
   <button class="chip" id="gps" aria-pressed="true">GPS 보정 켜짐</button>
   <div class="linkbox" id="linkbox" hidden>
     <h2>짝꿍 위치 보기</h2>
@@ -1195,6 +1209,18 @@ let lastSceneMeta='';
 function syncSceneHeader(){
   const name=REALC && RT.name ? RT.name+'의 지금' : '짝꿍의 지금';
   let state='preview', label='미리보기 · 실제 위치 아님';
+  const stale=REALC && RT.have && RT.at && Date.now()-RT.at>=300000;
+  const unavailable=!!REALC && (RT.off || RT.nopartner || !RT.have || !RT.at || stale);
+  stage.classList.toggle('location-unavailable',!!unavailable);
+  const empty=document.getElementById('scene-empty');
+  empty.hidden=!unavailable;
+  if(unavailable){
+    const title=document.getElementById('scene-empty-title'), desc=document.getElementById('scene-empty-desc');
+    if(RT.off){title.textContent='지금은 위치를 공유하지 않고 있어요';desc.textContent='공유가 다시 켜지면 지도가 나타나요.';}
+    else if(RT.nopartner){title.textContent='아직 짝꿍이 연결되지 않았어요';desc.textContent='앱에서 짝꿍 연결을 완료해 주세요.';}
+    else if(stale){title.textContent='새로운 위치를 기다리고 있어요';desc.textContent='마지막 위치를 계속 표시하지 않아요.';}
+    else {title.textContent='위치를 기다리고 있어요';desc.textContent='위치가 도착하면 여기에 작은 동네가 나타나요.';}
+  }
   if(REALC){
     if(RT.off){state='offline';label='위치 공유 중지';}
     else if(RT.nopartner){state='offline';label='짝꿍 연결 대기 중';}
@@ -1215,6 +1241,11 @@ function syncSceneHeader(){
   sceneStatusTextEl.textContent=label;
 }
 
+function discardPartnerLocation(){
+  RT.have=false; RT.placed=false; RT.at=0; RT.sub=null; RT.act=''; RT.speed=0;
+  RT.x=RT.z=RT.gx=RT.gz=0; RT.tx=0; RT.tz=1; RT.still=true;
+  V.x=V.z=0; lastDrawn=null;
+}
 async function pollReal(){
   if(RT.busy) return; RT.busy = true;
   try{
@@ -1223,9 +1254,9 @@ async function pollReal(){
     if(!r.ok){ const tx = await r.text(); if(/device not linked/.test(tx)){ try{ localStorage.removeItem('wy-device'); }catch(e){} location.reload(); } throw new Error('HTTP '+r.status+' '+tx.slice(0,120)); }
     const rows = await r.json();
     RT.nopartner = !rows.length;
-    if(!rows.length){ RT.off = false; RT.err = false; return; }
+    if(!rows.length){ discardPartnerLocation(); RT.off = false; RT.err = false; return; }
     if(rows.length && rows[0].name) RT.name = rows[0].name;
-    if(!rows.length || rows[0].lat==null){ RT.off = true; RT.err = false; return; }
+    if(rows[0].lat==null){ discardPartnerLocation(); RT.off = true; RT.err = false; return; }
     const q = rows[0], [x,z] = toLocal(q.lng, q.lat);
     RT.off = false; RT.err = false; RT.act = q.activity||''; RT.speed = q.speed||0; RT.acc = (q.accuracy||20)/10; RT.at = Date.parse(q.updated_at);
     const dead = RT.speed < .6 ? Math.max(2.0, RT.acc*.8) : .3;   // 멈춰 있으면 20m 안쪽 흔들림 무시
