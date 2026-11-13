@@ -93,6 +93,31 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
   .hint{display:none}
   .attr{left:0;right:0;text-align:center;font-size:10px}
 }
+
+/* Diorama-first product UI. Developer mode remains unchanged. */
+body:not(.dev) .top{display:none}
+body.dev .scene-header{display:none}
+.scene-header{position:absolute;z-index:2;top:20px;left:clamp(18px,3vw,36px);right:clamp(18px,3vw,36px);display:flex;align-items:flex-start;justify-content:space-between;gap:16px;pointer-events:none}
+.scene-kicker{margin:0 0 4px;font-size:11px;line-height:1.35;color:var(--ink-soft)}
+.scene-name{margin:0;font:400 clamp(21px,2.6vw,26px)/1.2 'Jua','Gowun Dodum',sans-serif;color:var(--ink)}
+.scene-status{display:inline-flex;align-items:center;justify-content:flex-end;gap:7px;max-width:52%;padding-top:6px;font-size:12px;line-height:1.4;text-align:right;color:var(--ink-soft)}
+.scene-dot{flex:0 0 7px;width:7px;height:7px;border-radius:50%;background:#8A96AD}
+.scene-status[data-state="fresh"] .scene-dot{background:#469674}
+.scene-status[data-state="estimated"] .scene-dot{background:#C58A52}
+.scene-status[data-state="stale"] .scene-dot,.scene-status[data-state="error"] .scene-dot{background:#D17D75}
+body:not(.dev) .bubble{border-width:1px;border-radius:16px;box-shadow:0 5px 16px rgba(44,49,80,.065)}
+body:not(.dev) .bubble::after{border-width:1px}
+body:not(.dev) .hint{display:none}
+@media(max-width:560px){
+  .scene-header{top:18px;left:18px;right:18px;gap:10px}
+  .scene-kicker{font-size:10px}
+  .scene-name{font-size:22px}
+  .scene-status{max-width:53%;padding-top:3px;font-size:11px;gap:6px}
+  body:not(.dev) .bubble{max-width:min(72vw,280px);padding:9px 12px 10px;border-radius:15px}
+  body:not(.dev) #msg{font-size:14px;line-height:1.4}
+  body:not(.dev) #sub{font-size:12px;line-height:1.45;margin-top:3px}
+  body:not(.dev) #wx{font-size:11.5px;line-height:1.4;margin-top:3px}
+}
 </style>
 </head>
 <body>
@@ -104,6 +129,15 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 
 <section class="stage" id="stage">
   <canvas id="c" role="img" aria-label="상대방의 현재 위치를 보여주는 미니어처 3D 동네"></canvas>
+  <header class="scene-header" aria-label="현재 위치 정보">
+    <div>
+      <p class="scene-kicker">지금 너는 어디쯤</p>
+      <h2 class="scene-name" id="scene-name">짝꿍의 지금</h2>
+    </div>
+    <div class="scene-status" id="scene-status" data-state="preview" role="status">
+      <span class="scene-dot" aria-hidden="true"></span><span id="scene-status-text">미리보기 · 실제 위치 아님</span>
+    </div>
+  </header>
   <div class="bubble" id="bubble" aria-live="polite"><p id="msg">불러오는 중</p><p id="sub"></p><p id="wx" hidden></p></div>
   <button class="chip" id="gps" aria-pressed="true">GPS 보정 켜짐</button>
   <div class="linkbox" id="linkbox" hidden>
@@ -1152,6 +1186,35 @@ let DEVICE = null; try{ DEVICE = localStorage.getItem('wy-device'); }catch(e){}
 const REALC = !DEV && (BRIDGE || DEVICE) ? 'on' : null;
 const SB_URL = 'https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY = 'sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
 const RT = {nopartner:false, name:'', act:'', sub:null, have:false, placed:false, x:0, z:0, gx:0, gz:0, tx:0, tz:1, speed:0, acc:2, at:0, off:false, err:false, lastPoll:-9, still:true, busy:false};
+
+/* Actual GPS fix, inferred movement, and preview are explicitly distinguished. */
+const sceneNameEl=document.getElementById('scene-name');
+const sceneStatusEl=document.getElementById('scene-status');
+const sceneStatusTextEl=document.getElementById('scene-status-text');
+let lastSceneMeta='';
+function syncSceneHeader(){
+  const name=REALC && RT.name ? RT.name+'의 지금' : '짝꿍의 지금';
+  let state='preview', label='미리보기 · 실제 위치 아님';
+  if(REALC){
+    if(RT.off){state='offline';label='위치 공유 중지';}
+    else if(RT.nopartner){state='offline';label='짝꿍 연결 대기 중';}
+    else if(RT.err){state='error';label='위치 연결 확인 중';}
+    else if(!RT.have || !RT.at){state='offline';label='위치 기다리는 중';}
+    else{
+      const minutes=Math.floor(Math.max(0,Date.now()-RT.at)/60000);
+      if(minutes>=5){state='stale';label='마지막 위치 '+minutes+'분 전';}
+      else if(mode==='subway' && RT.sub){state='estimated';label='지하철 위치 추정 중';}
+      else{state='fresh';label=minutes===0?'방금 확인된 위치':minutes+'분 전 확인된 위치';}
+    }
+  }
+  const signature=name+'|'+state+'|'+label;
+  if(signature===lastSceneMeta) return;
+  lastSceneMeta=signature;
+  sceneNameEl.textContent=name;
+  sceneStatusEl.dataset.state=state;
+  sceneStatusTextEl.textContent=label;
+}
+
 async function pollReal(){
   if(RT.busy) return; RT.busy = true;
   try{
@@ -1331,6 +1394,7 @@ function frame(){
     c = ago > 300 && RT.have && !RT.off && mode!=='subway' ? '한동안 새 위치가 오지 않았어요' : '';
   }
   say(a,b,c);
+  syncSceneHeader();
 
   const cx = w.x-V.x, cz = w.z-V.z;
   const pinY = mode==='subway' ? Math.max(.35, trainY(dDisp)+.75) : top;
@@ -1379,7 +1443,9 @@ function frame(){
   const p=pin.position.clone(); p.y+=.45; p.project(camera);
   const ww=stage.clientWidth, hh=stage.clientHeight, bw=bubble.offsetWidth, bh=bubble.offsetHeight;
   let sx=(p.x*.5+.5)*ww, sy=(-p.y*.5+.5)*hh-14;
-  sx=Math.min(ww-bw/2-10,Math.max(bw/2+10,sx)); sy=Math.max(bh+10,sy);
+  sx=Math.min(ww-bw/2-10,Math.max(bw/2+10,sx));
+  const bubbleClearance=DEV ? 10 : 86; // prevent overlap with location status
+  sy=Math.max(bh+bubbleClearance,sy);
   bubble.style.transform=`translate(${sx-bw/2}px, ${sy-bh}px)`;
   requestAnimationFrame(frame);
 }
