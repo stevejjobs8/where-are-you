@@ -1140,7 +1140,8 @@ gpsBtn.addEventListener('click', ()=>{ gpsOn=!gpsOn; gpsBtn.setAttribute('aria-p
   if(gpsOn){ G.es = D.s; } });
 let saved='pastel'; try{ const s=localStorage.getItem('diorama-style'); if(s&&THEMES[s]) saved=s; }catch(e){}
 pickStyle(saved); pickMode('bus');
-let lastText=''; const say=(a,b,c)=>{ const k=a+'|'+b+'|'+c; if(k===lastText) return; lastText=k; msg.textContent=a; sub.textContent=b; wxEl.textContent=c; wxEl.hidden=!c; };
+let lastText=''; const say=(a,b,c)=>{ const k=a+'|'+b+'|'+c; if(k===lastText) return; lastText=k; msg.textContent=a; sub.textContent=b; wxEl.textContent=c; wxEl.hidden=!c;
+  try{ if(window.parent&&window.parent!==window) window.parent.postMessage({__wy:1,a,b,c,off:RT.off,nopartner:RT.nopartner,err:RT.err,have:RT.have,name:RT.name,mode},'*'); }catch(e){} };
 const seat = (parent, x,y,z,s) => { if(doll.parent!==parent) parent.add(doll); doll.position.set(x,y,z); doll.scale.setScalar(s); };
 
 /* ================= 실제 위치 모드: 주소에 ?c=보는코드 가 있으면 Supabase에서 진짜 위치를 받아옴 ================= */
@@ -1327,7 +1328,7 @@ function frame(){
       b = nx ? '다음 역 '+nx.name+'쯤 (땅속이라 위치는 추정이에요)' : '땅속이라 위치는 추정이에요'; }
     else { a = who() + (RT.still ? '잠깐 멈춰 있어요' : mode==='bus' ? '버스나 차 타고 이동 중' : mode==='bike' ? '자전거 타는 중' : mode==='run' ? '뛰는 중' : '걷는 중');
       b = (nm ? nm+' 근처, ' : '') + when + ' 위치예요'; }
-    c = ago > 300 && RT.have && !RT.off ? '한동안 새 위치가 오지 않았어요' : '';
+    c = ago > 300 && RT.have && !RT.off && mode!=='subway' ? '한동안 새 위치가 오지 않았어요' : '';
   }
   say(a,b,c);
 
