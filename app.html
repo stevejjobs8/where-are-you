@@ -614,7 +614,7 @@ setInterval(()=>{ if(Native.isSharing()){ const s=Native.status(); if(s) setShar
 
 /* 지도(iframe)가 보내는 짝꿍 실시간 상태를 상단 칩에 반영 */
 window.addEventListener('message',e=>{
-  const d=e.data; if(!d||d.__wy!==1||!state.partner) return;
+  const d=e.data; if(PREVIEW || !d||d.__wy!==1||!state.partner) return;
   if(d.name){ state.pname=d.name; LS.set('pname',d.name); $('#pname').textContent=d.name; }
   const stuck=d.off||d.nopartner||!d.have||d.err;
   $('#pdot').className='dot'+(stuck?' off':' pulse');
