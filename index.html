@@ -46,7 +46,7 @@ canvas:active{cursor:grabbing}
   border-right:2px solid var(--line);border-bottom:2px solid var(--line);transform:translateX(-50%) rotate(45deg);border-radius:0 0 4px 0}
 #msg{font-family:'Jua','Gowun Dodum',sans-serif;font-size:18px;margin:0;line-height:1.3}
 #sub{margin:3px 0 0;font-size:13.5px;color:var(--ink-soft);line-height:1.4}
-.hint{position:absolute;bottom:22px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-soft);margin:0;pointer-events:none}
+.hint{position:absolute;bottom:84px;left:0;right:0;text-align:center;font-size:13px;color:var(--ink-soft);margin:0;pointer-events:none}
 .linkbox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(88vw,380px);background:var(--card);border:2px solid var(--line);border-radius:22px;padding:20px 20px 14px;z-index:5}
 .linkbox h2{font-family:'Jua','Gowun Dodum',sans-serif;font-weight:400;font-size:21px;margin:0 0 6px}
 .linkbox p{margin:0 0 12px;font-size:14px;line-height:1.55;color:var(--ink-soft)}
@@ -56,17 +56,59 @@ canvas:active{cursor:grabbing}
 .lerr{color:var(--pink-ink)!important;min-height:1em;margin:8px 0 4px!important}
 .lskip{font:inherit;font-size:13px;background:none;border:0;color:var(--ink-soft);text-decoration:underline;cursor:pointer;padding:4px 0}
 .linkbox[hidden]{display:none}
-.attr{position:absolute;right:10px;bottom:4px;margin:0;font-size:10.5px;color:var(--ink-soft);opacity:.85}
+.attr{position:absolute;left:16px;bottom:calc(4px + env(safe-area-inset-bottom,0px));margin:0;font-size:10.5px;color:var(--ink-soft);opacity:.85}
 .attr a{color:inherit}
 .views{position:absolute;right:14px;top:12px;display:flex;flex-direction:column;gap:6px}
 .views button{font:inherit;font-size:14px;background:var(--card);color:var(--ink);border:2px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
 .views button:hover{border-color:var(--pink)}
 .chip{position:absolute;left:14px;top:12px;font:inherit;font-size:14px;background:var(--card);color:var(--ink-soft);border:2px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
 .chip[aria-pressed="true"]{color:var(--pink-ink);background:var(--pink-soft)}
-/* 기본은 실서비스 화면(맵+말풍선만). 주소 끝에 ?dev 를 붙이면 개발용 조작판이 보임 */
-body:not(.dev) .controls, body:not(.dev) #gps, body:not(.dev) .live{display:none}
-body:not(.dev) .stage{padding-bottom:6px}
-body.app .top{display:none}
+/* 기본은 실서비스 화면(지도 + 위쪽 상태 바 + 따라가기 버튼). 주소 끝에 ?demo(또는 ?dev)를 붙이면 시연 모드:
+   이동수단·날씨·디자인·GPS 조작은 '시연 조작' 시트 안에만 있음 */
+.top{display:none}
+.bubble{display:none}
+#gps{display:none}
+body:not(.panel) .controls{display:none!important}
+
+/* ---------- 위쪽 상태 바 ---------- */
+:root{--bar:rgba(250,251,253,.86); --bar-line:rgba(44,49,80,.10); --live:#1F9D63; --est:#4A57C9; --warn:#B7791F; --off:#8A93AE; --btn:#23283F; --btn-ink:#fff}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--bar:rgba(30,36,58,.86); --bar-line:rgba(255,255,255,.10); --live:#4FD39A; --est:#9AA6FF; --warn:#E5B567; --off:#7C84A3; --btn:#EEF0FA; --btn-ink:#1B2135} }
+:root[data-theme="dark"]{--bar:rgba(30,36,58,.86); --bar-line:rgba(255,255,255,.10); --live:#4FD39A; --est:#9AA6FF; --warn:#E5B567; --off:#7C84A3; --btn:#EEF0FA; --btn-ink:#1B2135}
+.sbar{position:absolute;left:0;right:0;top:0;z-index:3;padding:calc(12px + env(safe-area-inset-top,0px)) 20px 11px;
+  background:var(--bar);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-bottom:1px solid var(--bar-line)}
+body.app .sbar{padding-right:64px}
+.sbar h2{margin:0;font:700 18px/1.35 system-ui,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;letter-spacing:-.2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sbar .meta{margin:3px 0 0;font-size:13px;line-height:1.4;color:var(--ink-soft);display:flex;align-items:center;gap:6px;
+  white-space:nowrap;overflow:hidden}
+.sbar .meta span{overflow:hidden;text-overflow:ellipsis}
+.sdot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:var(--off)}
+.sbar[data-state="live"] .sdot{background:var(--live)}
+.sbar[data-state="stale"] .sdot{background:var(--warn)}
+.sbar[data-state="estimated"] .sdot{background:none;border:2px dashed var(--est);flex-basis:10px;width:10px;height:10px}
+.sbar[data-state="estimated"] .lead{color:var(--est);font-weight:600}
+.sbar[data-state="stale"] .lead{color:var(--warn);font-weight:600}
+.sbar[data-state="preview"] .sdot{background:none;border:1.5px solid var(--off)}
+.sbar[data-follow="0"] .lead{color:var(--ink);font-weight:600}
+
+/* ---------- 따라가기 / 돌아가기 버튼 ---------- */
+.follow{position:absolute;right:16px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:3;height:52px;min-width:52px;
+  border-radius:26px;border:0;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--btn);color:var(--btn-ink);font:600 15px/1 system-ui,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+  box-shadow:0 3px 10px rgba(30,40,80,.22);cursor:pointer;transition:padding .2s}
+.follow svg{flex:none}
+.follow .fl{display:none;white-space:nowrap}
+.follow.away{padding:0 20px 0 16px}
+.follow.away .fl{display:inline}
+body.app .follow{bottom:84px}
+body.app .attr{bottom:70px;left:12px;right:84px;text-align:left}
+body.app .hint{display:none}
+.demo-btn{position:absolute;left:16px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:5;height:44px;border-radius:22px;
+  border:1px dashed var(--ink-soft);background:var(--bar);color:var(--ink);padding:0 16px;font:inherit;font-size:14px;cursor:pointer}
+body:not(.dev) .demo-btn{display:none}
+body.dev.panel .controls{position:absolute;left:0;right:0;bottom:0;z-index:4;background:var(--bg);border-top:1px solid var(--line);
+  padding:14px 16px calc(78px + env(safe-area-inset-bottom,0px))}
+body.dev.panel #gps{display:inline-block;position:static}
 #wx{margin:5px 0 0;font-size:13px;color:var(--pink-ink);line-height:1.35}
 #wx[hidden]{display:none}
 .controls{display:flex;flex-wrap:wrap;gap:10px 14px;justify-content:center;align-items:center;padding:8px 16px 18px}
@@ -96,7 +138,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 </style>
 </head>
 <body>
-<script>if(/[?&]dev\b/.test(location.search)) document.body.classList.add('dev'); if(/[?&]app\b/.test(location.search)) document.body.classList.add('app');</script>
+<script>if(/[?&](dev|demo)\b/.test(location.search)) document.body.classList.add('dev'); if(/[?&]app\b/.test(location.search)) document.body.classList.add('app');</script>
 <header class="top">
   <h1>지금 너는 어디쯤</h1>
   <span class="live"><i aria-hidden="true"></i>실시간 미리보기</span>
@@ -104,7 +146,16 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 
 <section class="stage" id="stage">
   <canvas id="c" role="img" aria-label="상대방의 현재 위치를 보여주는 미니어처 3D 동네"></canvas>
-  <div class="bubble" id="bubble" aria-live="polite"><p id="msg">불러오는 중</p><p id="sub"></p><p id="wx" hidden></p></div>
+  <header class="sbar" id="sbar" data-state="preview" data-follow="1" role="status" aria-live="polite">
+    <h2 id="stitle">불러오는 중</h2>
+    <p class="meta"><span class="sdot" aria-hidden="true"></span><span id="smeta">잠시만 기다려 주세요</span></p>
+  </header>
+  <button class="follow" id="follow" aria-label="자동으로 따라가는 중">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+    <span class="fl" id="followLabel">돌아가기</span>
+  </button>
+  <button class="demo-btn" id="demoBtn" aria-expanded="false">시연 조작</button>
+  <div class="bubble" id="bubble" aria-hidden="true"><p id="msg">불러오는 중</p><p id="sub"></p><p id="wx" hidden></p></div>
   <button class="chip" id="gps" aria-pressed="true">GPS 보정 켜짐</button>
   <div class="linkbox" id="linkbox" hidden>
     <h2>짝꿍 위치 보기</h2>
@@ -113,7 +164,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
     <p class="lerr" id="lerr"></p>
     <button class="lskip" id="lskip">일단 미리보기만 볼게요</button>
   </div>
-  <p class="hint">좌우로 끌면 회전, 위아래로 끌면 기울기</p>
+  <p class="hint">한 손가락으로 끌면 둘러보기 · 두 손가락으로 확대·회전·기울기</p>
   <p class="attr"><a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">© OpenMapTiles</a> 데이터 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap 기여자</a></p>
 </section>
 
@@ -744,7 +795,28 @@ const _o = new THREE.Object3D(), _c = new THREE.Color(), TIE_C = new THREE.Color
 const trainY = f => .7 + (-1.5-.7)*f;
 /* ================= 고정 요소 (가운데 사람, 땅 원판, 지하) ================= */
 let trainCars = [];
-let world, groundMat, groundTex, ctx, under, tracksBed, tracksRailL, tracksRailR, stationPool, train, bus, bike, bench, doll, pin, ring, ringMat, clouds, cloudMat;
+let world, groundMat, groundTex, ctx, under, tracksBed, tracksRailL, tracksRailR, stationPool, train, bus, bike, bench, doll, pin, ring, ringMat, clouds, cloudMat, estBand, fixDot;
+/* 빗금 + 위아래 점선 테두리 텍스처 (u: 선로 방향, v: 폭 방향) */
+function hatchTex(){
+  const c = document.createElement('canvas'); c.width = 128; c.height = 64; const g = c.getContext('2d');
+  g.fillStyle = 'rgba(74,87,201,.16)'; g.fillRect(0,0,128,64);
+  g.strokeStyle = 'rgba(74,87,201,.30)'; g.lineWidth = 7;
+  for(let x=-64; x<192; x+=21){ g.beginPath(); g.moveTo(x,64); g.lineTo(x+64,0); g.stroke(); }
+  g.fillStyle = '#4A57C9'; g.fillRect(0,0,76,6); g.fillRect(0,58,76,6);
+  const tx = new THREE.CanvasTexture(c); tx.wrapS = THREE.RepeatWrapping; tx.anisotropy = 4; return tx;
+}
+let estKey = '';
+function drawEstBand(path, s0, s1){
+  const key = s0.toFixed(1)+':'+s1.toFixed(1); if(key===estKey) return; estKey = key;
+  const pos = [], uv = [], idx = [], W = .6, step = .35;
+  let n = 0; const V = {x:0, z:0};   // 절대 좌표로 만들고, 매 프레임 estBand.position 으로 화면 중심만큼 이동
+  for(let s = s0; ; s += step){ const ss = Math.min(s, s1), a = path.at(ss), nx = a.hz, nz = -a.hx;
+    pos.push(a.x-V.x+nx*W, .06, a.z-V.z+nz*W, a.x-V.x-nx*W, .06, a.z-V.z-nz*W); uv.push(ss/1.6, 1, ss/1.6, 0);
+    if(n>0){ const k = n*2; idx.push(k-2, k-1, k, k-1, k+1, k); } n++; if(ss>=s1) break; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2)); g.setIndex(idx);
+  estBand.geometry.dispose(); estBand.geometry = g;
+}
 let rain, snow, leaves, snowCover, gpsDots, bikeWheels;
 const GC = document.createElement('canvas'); GC.width = GC.height = 768;
 function particles(n, kind){
@@ -926,13 +998,20 @@ function buildStatic(){
 
   doll = makeDoll(); world.add(doll);
 
-  pin = new THREE.Group();
-  const pm = new THREE.MeshLambertMaterial({color:'#FF5E86', emissive:'#5A0F25'});
-  [-.11,.11].forEach(x=>mesh(new THREE.SphereGeometry(.17,20,16), pm, x,0,0, pin));
-  mesh(new THREE.ConeGeometry(.265,.36,24), pm, 0,-.2,0, pin).rotation.z=Math.PI;
-  world.add(pin);
-  ringMat = new THREE.MeshBasicMaterial({color:'#FF5E86',transparent:true,opacity:.8,side:THREE.DoubleSide});
-  ring = new THREE.Mesh(new THREE.RingGeometry(.28,.36,40), ringMat); ring.rotation.x=-Math.PI/2; world.add(ring);
+  /* 위치 표시: 하트 대신, 땅 위에 GPS 오차 범위(반지름 = 정확도)를 옅은 파란 원으로 */
+  pin = new THREE.Group(); world.add(pin);   // 말풍선 기준점용(보이지 않음)
+  ringMat = new THREE.MeshBasicMaterial({color:'#4A57C9',transparent:true,opacity:.13,depthWrite:false,depthTest:false,side:THREE.DoubleSide});
+  ring = new THREE.Group();
+  const accFill = new THREE.Mesh(new THREE.CircleGeometry(1,64), ringMat); accFill.rotation.x=-Math.PI/2; ring.add(accFill);
+  const accEdge = new THREE.Mesh(new THREE.RingGeometry(.975,1,64), new THREE.MeshBasicMaterial({color:'#4A57C9',transparent:true,opacity:.5,depthWrite:false,depthTest:false,side:THREE.DoubleSide}));
+  accEdge.rotation.x=-Math.PI/2; ring.add(accEdge); ring.renderOrder = 2; world.add(ring);
+  /* 지하철 추정 구간: 선로를 따라 빗금 친 띠 + 마지막 실제 위치 점 */
+  estBand = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({map:hatchTex(), transparent:true, depthWrite:false, side:THREE.DoubleSide}));
+  estBand.renderOrder = 3; estBand.visible = false; world.add(estBand);
+  fixDot = new THREE.Group();
+  mesh(new THREE.CylinderGeometry(.2,.2,.04,24), new THREE.MeshBasicMaterial({color:'#FFFFFF'}), 0,0,0, fixDot, false);
+  mesh(new THREE.CylinderGeometry(.13,.13,.06,24), new THREE.MeshBasicMaterial({color:'#23283F'}), 0,0,0, fixDot, false);
+  fixDot.visible = false; world.add(fixDot);
 
   gpsDots = [0,1,2,3,4,5].map(()=>{ const m = mesh(new THREE.SphereGeometry(.07,10,8), new THREE.MeshBasicMaterial({color:'#7A7F9E', transparent:true, opacity:.6}), 0,.08,0, world, false); m.visible=false; return m; });
 
@@ -1039,9 +1118,11 @@ function paintSignal(){ if(!SHARED.lamps) return;
   SHARED.lamps.green.color.set(sigPhase==='green'?'#3EDB86':'#4B4F68'); }
 const walkedText = u => u<1 ? Math.max(1,Math.round(u*10))+'m' : meters(u);
 const meters = u => { if(u<1) return '곧 도착'; const m=Math.round(u)*10; return m>=1000 ? (m/1000).toFixed(1)+'km' : m+'m'; };
+let SUBFIX = null;   // 시연 모드: 지하철에 들어간 지점(= 마지막 실제 위치)
 function setMode(v){
   const was = mode; mode = v; hold=0; walked=0; served=null;
-  if(routeOf(v)!==routeOf(was)){ const q = routeOf(v).nearest(V.x, V.z); P.s = D.s = G.es = q.s; G.v = 0; G.hist = []; }
+  if(routeOf(v)!==routeOf(was)){ const q = routeOf(v).nearest(V.x-PAN.x, V.z-PAN.z); P.s = D.s = G.es = q.s; G.v = 0; G.hist = []; }
+  SUBFIX = v==='subway' ? {s:P.s, t:performance.now()/1000} : null;
 }
 
 /* ================= GPS 흉내 + 보정 (경로 위 거리 s 기준) ================= */
@@ -1074,37 +1155,68 @@ function gpsStep(dt, vel, underground){
 }
 /* ================= 카메라 ================= */
 const ZMIN = .12;   // 작을수록 더 가까이 확대
-let dist=80, zoom=1, az=1.2, el=.62, azT=az, elT=el;
+let dist=80, zoom=1, az=1.2, el=.62, azT=az, elT=el, ZMAX=1.5;
+/* 따라가기(자동 추적) / 둘러보기(자유 탐색): PAN = 짝꿍 위치에서 화면 중심까지의 거리(월드 단위, 1 = 10m) */
+const PAN = {x:0, z:0}; let following = true; const PAN_MAX = 45;
 const VIEW_EL = {top:1.45, tilt:.62, side:.2};
+if(innerWidth < innerHeight){ el = elT = .85; }
 const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function resize(){
   const w=stage.clientWidth, h=stage.clientHeight; renderer.setSize(w,h,false);
   camera.aspect=w/h; camera.updateProjectionMatrix();
   const tt=Math.tan(THREE.MathUtils.degToRad(camera.fov/2)), fill=.8;
-  dist = Math.max((R*.82/fill)/tt, (R*1.08/fill)/(tt*camera.aspect));
+  /* 세로 화면: 원판을 가로폭에 맞추면 지도가 화면의 1/5밖에 안 됨 → 높이 기준으로 채우고, 양옆은 잘려도 됨 */
+  const portrait = camera.aspect < 1;
+  dist = portrait ? R*1.1/tt : Math.max((R*.82/fill)/tt, (R*1.08/fill)/(tt*camera.aspect));
+  ZMAX = portrait ? 2.6 : 1.5;
 }
 new ResizeObserver(resize).observe(stage); resize();
-canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoom = clamp(zoom*Math.exp(e.deltaY*.0012), ZMIN, 1.5); }, {passive:false});
-let dragging=false, px0=0, py0=0;
-/* 한 손가락: 회전·기울기 / 두 손가락: 핀치 확대·축소 */
-const pts = new Map(); let pinch0 = 0, zoom0 = 1;
-const pinchDist = () => { const [a,b] = [...pts.values()]; return Math.hypot(a.x-b.x, a.y-b.y); };
+canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoom = clamp(zoom*Math.exp(e.deltaY*.0012), ZMIN, ZMAX); }, {passive:false});
+/* 한 손가락(마우스 왼쪽): 지도 옮기기 = 둘러보기
+   두 손가락: 벌리기·오므리기 확대, 비틀기 회전, 함께 위아래로 기울기 (마우스: 오른쪽 버튼이나 Shift+끌기로 회전·기울기) */
+let dragMode = null, px0=0, py0=0, moved0 = 0;
+const pts = new Map(); let pinch0 = 0, zoom0 = 1, ang0 = 0, az0 = 0, my0 = 0, el0 = 0;
+const two = () => { const [a,b] = [...pts.values()]; return {d:Math.hypot(a.x-b.x, a.y-b.y), a:Math.atan2(b.y-a.y, b.x-a.x), my:(a.y+b.y)/2}; };
+function panBy(dx, dy){
+  const Dd = dist*zoom, k = 2*Dd*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))/stage.clientHeight, ky = k/Math.max(.45, Math.sin(el));
+  const rx = Math.cos(az), rz = -Math.sin(az), fx = -Math.sin(az), fz = -Math.cos(az);
+  const mx = -rx*dx*k + fx*dy*ky, mz = -rz*dx*k + fz*dy*ky;
+  let nx = PAN.x + mx, nz = PAN.z + mz; const L = Math.hypot(nx, nz); if(L > PAN_MAX){ nx *= PAN_MAX/L; nz *= PAN_MAX/L; }
+  V.x += nx-PAN.x; V.z += nz-PAN.z; PAN.x = nx; PAN.z = nz;
+  if(following && Math.hypot(PAN.x, PAN.z) > .4) setFollow(false);
+}
+canvas.addEventListener('contextmenu', e=>e.preventDefault());
 canvas.addEventListener('pointerdown', e=>{
   pts.set(e.pointerId, {x:e.clientX, y:e.clientY}); canvas.setPointerCapture(e.pointerId);
-  if(pts.size===2){ dragging=false; pinch0 = pinchDist(); zoom0 = zoom; }
-  else if(pts.size===1){ dragging=true; px0=e.clientX; py0=e.clientY; }
+  if(pts.size===2){ const q = two(); dragMode='two'; pinch0=q.d; ang0=q.a; my0=q.my; zoom0=zoom; az0=azT; el0=elT; }
+  else if(pts.size===1){ dragMode = (e.button===2 || e.shiftKey) ? 'orbit' : 'pan'; px0=e.clientX; py0=e.clientY; moved0=0; }
 });
 canvas.addEventListener('pointermove', e=>{
   if(!pts.has(e.pointerId)) return;
   pts.set(e.pointerId, {x:e.clientX, y:e.clientY});
-  if(pts.size>=2){ const d = pinchDist(); if(pinch0>0 && d>0) zoom = clamp(zoom0*pinch0/d, ZMIN, 1.5); return; }
-  if(!dragging) return;
-  azT -= (e.clientX-px0)*.008; elT = clamp(elT+(e.clientY-py0)*.005, 0, 1.45); az=azT; el=elT; px0=e.clientX; py0=e.clientY; });
+  if(dragMode==='two' && pts.size>=2){ const q = two();
+    if(pinch0>0 && q.d>0) zoom = clamp(zoom0*pinch0/q.d, ZMIN, ZMAX);
+    let da = q.a-ang0; da = Math.atan2(Math.sin(da), Math.cos(da)); azT = az = az0 - da;
+    elT = el = clamp(el0 + (q.my-my0)*.005, .15, 1.45); return; }
+  const dx = e.clientX-px0, dy = e.clientY-py0; px0=e.clientX; py0=e.clientY; moved0 += Math.abs(dx)+Math.abs(dy);
+  if(dragMode==='orbit'){ azT -= dx*.008; elT = clamp(elT+dy*.005, .15, 1.45); az=azT; el=elT; }
+  else if(dragMode==='pan' && moved0 > 4) panBy(dx, dy);
+});
 ['pointerup','pointercancel','pointerleave'].forEach(tp=>canvas.addEventListener(tp, e=>{
   pts.delete(e.pointerId);
-  if(pts.size===1){ const q=[...pts.values()][0]; px0=q.x; py0=q.y; dragging=true; } else dragging=false;
+  if(pts.size===1 && dragMode==='two'){ const q=[...pts.values()][0]; px0=q.x; py0=q.y; dragMode='pan'; moved0=99; }
+  else if(!pts.size) dragMode=null;
 }));
+/* 따라가기 버튼 */
+const followBtn = document.getElementById('follow'), followLabel = document.getElementById('followLabel');
+function setFollow(on){
+  following = on; followBtn.classList.toggle('away', !on);
+  followBtn.setAttribute('aria-label', on ? '자동으로 따라가는 중' : followLabel.textContent);
+  lastStatus = '';   // 상태 바 문구 다시 그리기
+}
+followBtn.addEventListener('click', ()=>{ if(following){ zoom = 1; azT = 1.2; elT = innerWidth<innerHeight ? .85 : VIEW_EL.tilt; } setFollow(true); });
+window.addEventListener('message', e=>{ const d=e.data; if(d && d.__wy===2 && d.cmd==='follow') setFollow(true); });
 
 /* ================= 라이트/다크, 날씨 조명 ================= */
 const mq = matchMedia('(prefers-color-scheme: dark)');
@@ -1140,12 +1252,26 @@ gpsBtn.addEventListener('click', ()=>{ gpsOn=!gpsOn; gpsBtn.setAttribute('aria-p
   if(gpsOn){ G.es = D.s; } });
 let saved='pastel'; try{ const s=localStorage.getItem('diorama-style'); if(s&&THEMES[s]) saved=s; }catch(e){}
 pickStyle(saved); pickMode('bus');
+{ const db=document.getElementById('demoBtn');
+  db.addEventListener('click', ()=>{ const on=!document.body.classList.contains('panel'); document.body.classList.toggle('panel', on); db.setAttribute('aria-expanded', String(on)); db.textContent = on ? '시연 조작 닫기' : '시연 조작'; }); }
 let lastText=''; const say=(a,b,c)=>{ const k=a+'|'+b+'|'+c; if(k===lastText) return; lastText=k; msg.textContent=a; sub.textContent=b; wxEl.textContent=c; wxEl.hidden=!c;
   try{ if(window.parent&&window.parent!==window) window.parent.postMessage({__wy:1,a,b,c,off:RT.off,nopartner:RT.nopartner,err:RT.err,have:RT.have,name:RT.name,mode},'*'); }catch(e){} };
+const sbar=document.getElementById('sbar'), stitle=document.getElementById('stitle'), smeta=document.getElementById('smeta');
+let lastStatus='';
+function status(st, ti, me, nm){
+  const k = st+'|'+ti+'|'+me.join('·')+'|'+following; if(k===lastStatus) return; lastStatus = k;
+  sbar.dataset.state = st; sbar.dataset.follow = following ? '1' : '0';
+  stitle.textContent = ti;
+  smeta.innerHTML = ''; me.forEach((m,i)=>{ if(i){ const d=document.createElement('span'); d.textContent='·'; d.style.opacity='.5'; smeta.append(' ',d,' '); }
+    const x=document.createElement('span'); if(i===0) x.className='lead'; x.textContent=m; smeta.append(x); });
+  followLabel.textContent = nm+'에게 돌아가기';
+  if(!following) followBtn.setAttribute('aria-label', followLabel.textContent);
+  try{ if(window.parent&&window.parent!==window) window.parent.postMessage({__wy:1, bar:{state:st, title:ti, meta:me, follow:following}},'*'); }catch(e){}
+}
 const seat = (parent, x,y,z,s) => { if(doll.parent!==parent) parent.add(doll); doll.position.set(x,y,z); doll.scale.setScalar(s); };
 
 /* ================= 실제 위치 모드: 주소에 ?c=보는코드 가 있으면 Supabase에서 진짜 위치를 받아옴 ================= */
-const DEV = /[?&]dev\b/.test(location.search);
+const DEV = /[?&](dev|demo)\b/.test(location.search);
 const BRIDGE = (()=>{ try{ return window.AndroidBridge && AndroidBridge.auth ? JSON.parse(AndroidBridge.auth()) : null; }catch(e){ return null; } })();
 let DEVICE = null; try{ DEVICE = localStorage.getItem('wy-device'); }catch(e){}
 /* 실제 위치 모드: 앱 안(앱이 인증 정보 전달) 또는 앱으로 연결해 둔 웹 브라우저(기기 토큰)일 때만. 링크만으로는 볼 수 없음 */
@@ -1164,7 +1290,7 @@ async function pollReal(){
     if(rows.length && rows[0].name) RT.name = rows[0].name;
     if(!rows.length || rows[0].lat==null){ RT.off = true; RT.err = false; return; }
     const q = rows[0], [x,z] = toLocal(q.lng, q.lat);
-    RT.off = false; RT.err = false; RT.act = q.activity||''; RT.speed = q.speed||0; RT.acc = (q.accuracy||20)/10; RT.at = Date.parse(q.updated_at);
+    RT.off = false; RT.err = false; RT.act = q.activity||''; RT.speed = q.speed||0; RT.acc = (q.accuracy||20)/10; RT.accM = q.accuracy||20; RT.at = Date.parse(q.updated_at);
     const dead = RT.speed < .6 ? Math.max(2.0, RT.acc*.8) : .3;   // 멈춰 있으면 20m 안쪽 흔들림 무시
     if(!RT.have){ RT.have = true; RT.gx = RT.x = x; RT.gz = RT.z = z; }
     else if(Math.hypot(x-RT.gx, z-RT.gz) > dead){ RT.gx = x; RT.gz = z; }
@@ -1264,8 +1390,12 @@ function frame(){
 
   /* 화면 중심 */
   const w = REALC && !(mode==='subway' && RT.sub) ? {x:RT.x, z:RT.z, tx:RT.tx, tz:RT.tz} : worldPos(mode, D.s, dir);
-  if(REALC){ V.x += (w.x-V.x)*Math.min(1,dt*4); V.z += (w.z-V.z)*Math.min(1,dt*4); }
-  else if(gpsOn || depthNow>.5 || !G.rawPos){ V.x += (w.x-V.x)*Math.min(1,dt*5); V.z += (w.z-V.z)*Math.min(1,dt*5); }
+  /* 따라가기: 화면 중심이 짝꿍을 따라감(PAN은 0으로 돌아옴). 둘러보기: 짝꿍이 움직여도 화면 중심은 그대로 */
+  if(following){ const k = Math.min(1, dt*5); PAN.x -= PAN.x*k; PAN.z -= PAN.z*k; if(Math.hypot(PAN.x,PAN.z)<.01){ PAN.x=PAN.z=0; } }
+  else { PAN.x = V.x - w.x; PAN.z = V.z - w.z; const L = Math.hypot(PAN.x, PAN.z); if(L > PAN_MAX+R){ PAN.x *= (PAN_MAX+R)/L; PAN.z *= (PAN_MAX+R)/L; } }
+  if(!following){ V.x = w.x + PAN.x; V.z = w.z + PAN.z; }
+  else if(REALC){ V.x += (w.x+PAN.x-V.x)*Math.min(1,dt*4); V.z += (w.z+PAN.z-V.z)*Math.min(1,dt*4); }
+  else if(gpsOn || depthNow>.5 || !G.rawPos){ V.x += (w.x+PAN.x-V.x)*Math.min(1,dt*5); V.z += (w.z+PAN.z-V.z)*Math.min(1,dt*5); }
   else { V.x = G.rawPos.x; V.z = G.rawPos.z; }
   if(!lastDrawn || Math.abs(lastDrawn.x-V.x)>.004 || Math.abs(lastDrawn.z-V.z)>.004){ drawGround(V); lastDrawn={x:V.x,z:V.z}; }
   if(t-lastTiles > .5){ lastTiles = t; ensureTiles(V); }
@@ -1330,14 +1460,52 @@ function frame(){
       b = (nm ? nm+' 근처, ' : '') + when + ' 위치예요'; }
     c = ago > 300 && RT.have && !RT.off && mode!=='subway' ? '한동안 새 위치가 오지 않았어요' : '';
   }
+  /* 위쪽 상태 바: 1줄 = 누가·무엇을, 2줄 = 공유 상태·시각·정확도 (지하철이면 '추정'을 분명히) */
+  const nowS = performance.now()/1000;
+  const nm0 = REALC ? (RT.name || '짝꿍') : '하루';
+  /* 지하철 판정인데 근처 선로를 못 찾은 경우도 '추정'으로 (버스로 보이면 실제 위치로 오해함) */
+  const noRail = REALC && RT.act==='subway' && !RT.sub;
+  const est = mode==='subway' && (!REALC || RT.sub) || noRail;
+  let st, ti, me = [];
+  const agoS = REALC ? (RT.at ? Math.max(0, Math.round((Date.now()-RT.at)/1000)) : 0) : 0;
+  const whenTx = sec => sec < 20 ? '방금 전' : sec < 120 ? sec+'초 전' : Math.round(sec/60)+'분 전';
+  const act = noRail ? '지하철로 이동 중' : REALC && RT.still && !est ? '잠깐 멈춰 있어요'
+    : {bus: REALC ? '버스나 차로 이동 중' : '버스로 이동 중', subway: REALC ? '지하철로 이동 중' : '지하철 2호선', bike:'자전거 타는 중', run:'뛰는 중', walk:'걷는 중', rest:'쉬는 중'}[mode];
+  let fixS = null, fixAgo = 0;
+  if(est){ if(REALC){ fixS = RT.sub ? RT.sub.s0 : null; fixAgo = agoS; } else if(SUBFIX){ fixS = SUBFIX.s; fixAgo = Math.round(nowS-SUBFIX.t); } }
+  const fixSt = fixS==null ? null : STATIONS.slice().sort((p,q)=>Math.abs(p.s-fixS)-Math.abs(q.s-fixS))[0];
+  const fixName = fixSt && Math.abs(fixSt.s-fixS) < 8 ? fixSt.name+'역에서 ' : '';
+  if(REALC && RT.err){ st='off'; ti='연결이 잠깐 끊겼어요'; me=['다시 연결하는 중이에요']; }
+  else if(REALC && RT.nopartner){ st='off'; ti='아직 짝꿍이 연결되지 않았어요'; me=['앱에서 짝꿍 연결을 먼저 해주세요']; }
+  else if(REALC && RT.off){ st='off'; ti=nm0; me=['위치 공유가 꺼져 있어요', '켜면 바로 보여요']; }
+  else if(REALC && !RT.have){ st='off'; ti=nm0; me=['위치를 기다리는 중이에요']; }
+  else {
+    ti = nm0+' · '+act;
+    if(est){ st='estimated'; me=['땅속이라 추정 위치', fixName+whenTx(fixAgo)+' 확인']; }
+    else if(REALC && agoS > 300){ st='stale'; me=['5분 넘게 새 위치가 없어요', '마지막 '+whenTx(agoS)]; }
+    else if(REALC){ st='live'; me=['위치 공유 중', whenTx(agoS), '오차 약 '+Math.max(5, Math.round((RT.accM||20)/5)*5)+'m']; }
+    else { st='preview'; me=[DEV ? '시연 모드' : '미리보기', '실제 위치 아님']; }
+    if(!REALC && est) me.push(DEV ? '시연 모드' : '미리보기');
+    if(!following) me = ['둘러보는 중', '자동 추적 멈춤'].concat(st==='live' ? [whenTx(agoS)] : st==='estimated' ? ['추정 위치'] : []);
+  }
+  status(st, ti, me, nm0);
   say(a,b,c);
 
   const cx = w.x-V.x, cz = w.z-V.z;
   const pinY = mode==='subway' ? Math.max(.35, trainY(dDisp)+.75) : top;
-  pin.position.set(cx, pinY+.55+(reduce?0:Math.sin(t*3)*.08), cz); pin.quaternion.copy(camera.quaternion);
-  ring.position.set(cx, mode==='subway' ? .02 : .02, cz);
-  const rp=(t*.8)%1; ring.scale.setScalar(1+rp*2.2); ringMat.opacity=.75*(1-rp);
-  gpsDots.forEach((m,k)=>{ const h=G.hist[k]; m.visible = !!h && depthNow<=.5 && h.age<6;
+  pin.position.set(cx, pinY+.55, cz);
+  const accU = REALC ? Math.max(.6, (RT.accM||20)/10) : 2;
+  /* 둘러보다가 짝꿍이 원판 밖으로 나가면 하늘에 떠 보이지 않게 숨김 */
+  const onDisc = Math.hypot(cx, cz) < R-.6;
+  bus.visible = bus.visible && onDisc && !noRail; bike.visible = bike.visible && onDisc; bench.visible = bench.visible && onDisc; doll.visible = (onDisc || mode==='subway') && !noRail;
+  ring.visible = !est && st!=='off' && onDisc; ring.position.set(cx, .03, cz); ring.scale.setScalar(accU);
+  estBand.visible = est && !noRail; fixDot.visible = est && (fixS!=null || noRail);
+  if(noRail) fixDot.position.set(RT.gx-V.x, .06, RT.gz-V.z);
+  if(est && !noRail){ const sp = ROUTES.subway, h = REALC ? Math.min(14, 2 + fixAgo*.04) : 5;
+    const s0 = clamp(D.s - dir*h*.5, 0, sp.L), s1 = clamp(D.s + dir*h, 0, sp.L);
+    drawEstBand(sp, Math.min(s0,s1), Math.max(s0,s1)); estBand.position.set(-V.x, 0, -V.z);
+    if(fixS!=null){ const f = sp.at(fixS); fixDot.position.set(f.x-V.x, .06, f.z-V.z); } }
+  gpsDots.forEach((m,k)=>{ const h=G.hist[k]; m.visible = DEV && !!h && depthNow<=.5 && h.age<6;
     if(m.visible){ m.position.set(h.x-V.x, .1, h.z-V.z); m.material.opacity = .65*(1-h.age/6); } });
 
   rain.visible = weather==='rain'; snow.visible = weather==='snow'; leaves.visible = weather==='wind';
