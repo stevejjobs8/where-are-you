@@ -1,7 +1,9 @@
-name: Android APK
+name: Android Design Preview APK
 
 on:
   push:
+    branches:
+      - design/diorama-first-main-screen
     paths:
       - 'android/**'
       - '.github/workflows/android.yml'
@@ -27,27 +29,31 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Restore stable signing key
+      - name: Restore optional stable signing key
         env:
           KS_B64: ${{ secrets.KEYSTORE_B64 }}
         if: env.HAS_KS == 'true'
         run: echo "$KS_B64" | base64 -d > android/app/stable.keystore
 
-      - name: Build debug APK
+      - name: Build design preview APK
         working-directory: android
         env:
           KS_PASS: ${{ secrets.KS_PASS }}
         run: gradle assembleDebug --no-daemon --stacktrace
 
+      - name: Name preview APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk where-are-you-design-preview.apk
+
       - uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: where-are-you-design-preview
+          path: where-are-you-design-preview.apk
 
-      - name: Publish to release (direct download link)
+      - name: Publish separate design preview release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: app-latest
-          name: 안드로이드 앱 최신 빌드
+          tag_name: app-design-preview
+          name: 어디쯤 안드로이드 디자인 미리보기
           prerelease: true
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          target_commitish: design/diorama-first-main-screen
+          files: where-are-you-design-preview.apk
