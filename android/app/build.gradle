@@ -10,8 +10,8 @@ android {
         applicationId 'io.github.stevejjobs8.whereareyou'
         minSdk 26
         targetSdk 34
-        versionCode 6
-        versionName '0.4.2'
+        versionCode 7
+        versionName '0.4.3-design-preview'
     }
 
     signingConfigs {
@@ -24,6 +24,8 @@ android {
     }
     buildTypes {
         debug {
+            // 테스트 APK를 기존 설치본과 나란히 설치
+            applicationIdSuffix '.designpreview'
             // 고정 서명 열쇠가 있으면 그걸로 서명 → 새 버전을 덮어쓰기 설치 가능
             if (file('stable.keystore').exists()) signingConfig signingConfigs.stable
         }

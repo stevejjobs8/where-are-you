@@ -219,6 +219,52 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
 .dlg p{font-size:13.5px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.65}
 .dlg .acts{display:flex;gap:10px;margin-top:22px}.dlg .acts .btn{flex:1}
 .btn.warn{background:var(--pink);color:#fff}
+
+/* Main-screen refinement: the miniature scene owns the visual hierarchy. */
+.statuschip{
+  top:calc(19px + var(--safe-t));left:20px;max-width:calc(100% - 98px);
+  background:transparent;border:0;border-radius:0;padding:0;box-shadow:none;
+  gap:2px;animation:none;pointer-events:none;
+}
+.status-kicker{font-size:10.5px;line-height:1.45;color:var(--muted);letter-spacing:.01em}
+.statuschip .r1{gap:9px;align-items:center}
+.statuschip .nm{font-size:23px;max-width:min(57vw,270px);line-height:1.25}
+.statuschip .st{font-size:12px;max-width:calc(100vw - 110px);white-space:normal;line-height:1.45}
+.statuschip .dot{height:7px;width:7px;box-shadow:none}
+.statuschip .dot.pulse{animation:none}
+.rbtn{top:calc(18px + var(--safe-t));right:19px;width:44px;height:44px;border-radius:15px;
+  border:1px solid color-mix(in srgb,var(--line2) 66%,transparent);
+  background:color-mix(in srgb,var(--card) 92%,transparent);box-shadow:0 3px 10px rgba(44,49,80,.06)}
+.rbtn svg{width:20px;height:20px}
+.bottom{left:18px;right:18px;bottom:calc(17px + var(--safe-b));gap:6px}
+.locchip{align-self:flex-start;padding:3px 7px 4px;background:transparent;border:0;border-radius:0;
+  box-shadow:none;font-size:12px;line-height:1.35;color:var(--ink-soft,var(--muted));text-shadow:0 1px 0 var(--bg)}
+.sharecard{min-height:66px;border:1px solid var(--line);border-radius:18px;padding:11px 12px 11px 15px;
+  gap:11px;box-shadow:0 5px 20px rgba(44,49,80,.055);
+  background:color-mix(in srgb,var(--card) 96%,transparent)}
+.sharecard .t1{font-size:15px;line-height:1.3}
+.sharecard .t2{font-size:11.5px;line-height:1.4;margin-top:3px}
+.sharecard>.dot{height:7px;width:7px;box-shadow:none}
+.sharecard>.dot.pulse{animation:none}
+.sharecard .txt{padding-right:2px}
+.switch{width:57px;height:48px;border-radius:12px}
+.switch .track{background:#D1D6E3}
+.accesschip{top:calc(96px + var(--safe-t));left:20px;transform:none;max-width:calc(100% - 40px);
+  border:1px solid var(--pink-line);border-radius:12px;padding:7px 11px;font-size:11.5px;
+  box-shadow:0 4px 12px rgba(44,49,80,.05)}
+.empty{background:var(--bg)}
+.empty h2{font-size:22px}
+.btn.primary{box-shadow:none}
+.btn{border-radius:16px}
+.sheet{border-radius:23px 23px 0 0}
+@media(max-width:360px){
+  .statuschip{left:15px;top:calc(15px + var(--safe-t))}
+  .statuschip .nm{font-size:21px}
+  .statuschip .st{font-size:11px}
+  .rbtn{right:15px;top:calc(14px + var(--safe-t))}
+  .bottom{left:12px;right:12px}
+}
+@media(prefers-reduced-motion:reduce){.statuschip,.accesschip{animation:none}}
 </style>
 </head>
 <body>
@@ -253,7 +299,8 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
 <!-- 메인 오버레이 -->
 <div id="overlay" class="hide">
   <div class="statuschip hide" id="statuschip">
-    <div class="r1"><span class="dot pulse" id="pdot"></span><span class="nm jua" id="pname">짝꿍</span></div>
+    <span class="status-kicker">지금 너는 어디쯤</span>
+    <div class="r1"><span class="nm jua" id="pname">짝꿍</span><span class="dot pulse" id="pdot" aria-hidden="true"></span></div>
     <span class="st" id="pstate">위치를 불러오는 중…</span>
   </div>
   <button class="rbtn" id="menuBtn" aria-label="메뉴">
@@ -511,9 +558,12 @@ function showMain(){
   const has=!!state.partner;
   $('#empty').classList.toggle('hide',has);
   $('#statuschip').classList.toggle('hide',!has);
-  $('#mapframe').style.display = (has&&!PREVIEW)?'block':'none';
-  $('#faux').style.display = (has&&(PREVIEW))?'block':(PREVIEW?'block':'none');
-  if(has && !PREVIEW && $('#mapframe').src.indexOf('app')<0){ $('#mapframe').src='index.html?app=1'; }
+  const liveMap=has&&!PREVIEW, demoMap=has&&PREVIEW==='main';
+  $('#mapframe').style.display = (liveMap||demoMap)?'block':'none';
+  $('#faux').style.display = PREVIEW&&!demoMap?'block':'none';
+  if((liveMap||demoMap) && $('#mapframe').src.indexOf('app=1')<0){
+    $('#mapframe').src=demoMap?'index.html?app=1&demo=1':'index.html?app=1';
+  }
   $('#mNameCur').textContent=state.name||'이름 없음';
   paintPartner(); paintShare(Native.isSharing());
 }
@@ -708,8 +758,11 @@ function preview(){
   if(scr.indexOf('onboard')===0){ $('#onboard').classList.remove('hide'); obShow(+(qp.get('step')||0)); return; }
   // main 계열
   if(scr!=='main-empty'){ state.partner='demo'; state.pname='하루'; }
-  if(scr==='main'||scr==='main-empty'){ showMain(); if(scr!=='main-empty'){ $('#pstate').textContent='지하철 타고 이동 중 · 방금'; LS.set('sharing','1'); paintShare(true);
-      $('#accesschip').textContent='💗 최근 30일 하루가 3번 내 위치를 봤어요'; $('#accesschip').classList.remove('hide'); $('#locchip').textContent='하루 · 합정역 2호선 부근'; $('#locchip').classList.remove('hide'); } }
+  if(scr==='main'||scr==='main-empty'){ showMain(); if(scr!=='main-empty'){ $('#pstate').textContent='시연 화면 · 실제 위치 아님'; $('#pdot').className='dot off';
+      $('#locchip').textContent='합정역 부근 · 미리보기'; $('#locchip').classList.remove('hide'); 
+      $('#sharetitle').textContent='내 위치 공유 (시연)'; $('#sharesub').textContent='이 화면에서는 실제 위치를 보내지 않아요';
+      $('#shareSwitch').disabled=true;
+    } }
   else if(scr==='pair'){ showMain(); showPane('#sheetPair','invite'); $('#inviteCode').textContent='AB12-CD34'; $('#inviteTimer').textContent='9:12'; openSheet('#sheetPair'); }
   else if(scr==='enter'){ showMain(); showPane('#sheetPair','enter'); openSheet('#sheetPair'); }
   else if(scr==='menu'){ showMain(); $('#mNameCur').textContent='하루'; openSheet('#sheetMenu'); }
