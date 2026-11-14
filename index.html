@@ -96,7 +96,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 
 /* Diorama-first product UI. Developer mode remains unchanged. */
 body:not(.dev) .top{display:none}
-body.dev .scene-header{display:none}
+body.dev .scene-header,body.app .scene-header{display:none}
 .scene-header{position:absolute;z-index:2;top:20px;left:clamp(18px,3vw,36px);right:clamp(18px,3vw,36px);display:flex;align-items:flex-start;justify-content:space-between;gap:16px;pointer-events:none}
 .scene-kicker{margin:0 0 4px;font-size:11px;line-height:1.35;color:var(--ink-soft)}
 .scene-name{margin:0;font:400 clamp(21px,2.6vw,26px)/1.2 'Jua','Gowun Dodum',sans-serif;color:var(--ink)}
@@ -1197,7 +1197,8 @@ const DEV = /[?&]dev\b/.test(location.search);
 const BRIDGE = (()=>{ try{ return window.AndroidBridge && AndroidBridge.auth ? JSON.parse(AndroidBridge.auth()) : null; }catch(e){ return null; } })();
 let DEVICE = null; try{ DEVICE = localStorage.getItem('wy-device'); }catch(e){}
 /* 실제 위치 모드: 앱 안(앱이 인증 정보 전달) 또는 앱으로 연결해 둔 웹 브라우저(기기 토큰)일 때만. 링크만으로는 볼 수 없음 */
-const REALC = !DEV && (BRIDGE || DEVICE) ? 'on' : null;
+const DEMO = /[?&]demo\b/.test(location.search);
+const REALC = !DEV && !DEMO && (BRIDGE || DEVICE) ? 'on' : null;
 const SB_URL = 'https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY = 'sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
 const RT = {nopartner:false, name:'', act:'', sub:null, have:false, placed:false, x:0, z:0, gx:0, gz:0, tx:0, tz:1, speed:0, acc:2, at:0, off:false, err:false, lastPoll:-9, still:true, busy:false};
 
@@ -1267,7 +1268,7 @@ async function pollReal(){
 }
 /* 웹 기기 연결 화면 */
 { const box=document.getElementById('linkbox');
-  if(!DEV && !BRIDGE && !DEVICE) box.hidden = false;
+  if(!DEV && !DEMO && !BRIDGE && !DEVICE) box.hidden = false;
   document.getElementById('lskip').addEventListener('click', ()=>{ box.hidden = true; });
   document.getElementById('lgo').addEventListener('click', async ()=>{
     const err=document.getElementById('lerr'); err.textContent='';
@@ -1281,7 +1282,7 @@ async function pollReal(){
   });
 }
 /* 연결된 웹 브라우저: 끊기 버튼 */
-if(DEVICE && !BRIDGE){ const at=document.querySelector('.attr'); const b=document.createElement('button');
+if(!DEMO && DEVICE && !BRIDGE){ const at=document.querySelector('.attr'); const b=document.createElement('button');
   b.textContent='이 브라우저 연결 끊기'; b.style.cssText='font:inherit;font-size:inherit;background:none;border:0;color:inherit;text-decoration:underline;cursor:pointer;margin-left:8px;padding:0';
   b.addEventListener('click', async ()=>{ try{ await fetch(SB_URL+'/rest/v1/rpc/device_unlink',{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify({p_token:DEVICE})}); }catch(e){}
     try{ localStorage.removeItem('wy-device'); }catch(e){} location.reload(); });
