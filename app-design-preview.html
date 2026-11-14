@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#E3EBF6">
+<title>지금 너는 어디쯤</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap" rel="stylesheet">
+<style>
+/* ================= 디자인 토큰 ================= */
+:root{
+  --bg:#E3EBF6; --bg2:#D7E2F2; --ink:#2C3150; --muted:#646B8E; --faint:#9BA4C2;
+  --pink:#FF6F91; --pink-d:#E7557A; --pink-bg:#FFF4F7; --pink-line:#F6AFC1;
+  --card:#ffffff; --line:#E3E9F3; --line2:#CFD8EA; --ok:#2E9E6A; --ok-bg:#E7F6EE;
+  --sheet:#ffffff; --scrim:rgba(32,37,64,.42);
+  --sh-s:0 6px 16px rgba(44,49,80,.10); --sh-m:0 12px 30px rgba(44,49,80,.16); --sh-l:0 18px 44px rgba(44,49,80,.24);
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+:root[data-theme="dark"], :root.dark{
+  --bg:#1A1F33; --bg2:#141829; --ink:#EEF1FB; --muted:#A6AEC9; --faint:#6B7498;
+  --pink:#FF86A2; --pink-d:#FF9DB4; --pink-bg:#2A2436; --pink-line:#7A4A5C;
+  --card:#242A42; --line:#333A58; --line2:#3A4263; --ok:#4FD39A; --ok-bg:#1E3A30;
+  --sheet:#242A42; --scrim:rgba(6,9,20,.6);
+  --sh-s:0 6px 16px rgba(0,0,0,.3); --sh-m:0 12px 30px rgba(0,0,0,.4); --sh-l:0 18px 44px rgba(0,0,0,.5);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]):not(.light){
+    --bg:#1A1F33; --bg2:#141829; --ink:#EEF1FB; --muted:#A6AEC9; --faint:#6B7498;
+    --pink:#FF86A2; --pink-d:#FF9DB4; --pink-bg:#2A2436; --pink-line:#7A4A5C;
+    --card:#242A42; --line:#333A58; --line2:#3A4263; --ok:#4FD39A; --ok-bg:#1E3A30;
+    --sheet:#242A42; --scrim:rgba(6,9,20,.6);
+    --sh-s:0 6px 16px rgba(0,0,0,.3); --sh-m:0 12px 30px rgba(0,0,0,.4); --sh-l:0 18px 44px rgba(0,0,0,.5);
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:'Gowun Dodum',-apple-system,sans-serif;color:var(--ink);background:var(--bg);
+  overflow:hidden;position:fixed;inset:0;line-height:1.5;overscroll-behavior:none}
+.jua{font-family:'Jua',sans-serif;font-weight:400}
+button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.hide{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ================= 지도 레이어 ================= */
+#maplayer{position:absolute;inset:0;background:var(--bg)}
+#mapframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--bg)}
+#faux{position:absolute;inset:0;width:100%;height:100%;display:none}
+.preview #faux{display:block}.preview #mapframe{display:none}
+
+/* ================= 오버레이 공통 ================= */
+#overlay{position:absolute;inset:0;pointer-events:none;z-index:10}
+#overlay > *{pointer-events:auto}
+.pad-t{padding-top:calc(14px + var(--safe-t))}
+.pad-b{padding-bottom:calc(16px + var(--safe-b))}
+
+/* 떠 있는 상태 칩 (좌상단) */
+.statuschip{position:absolute;top:calc(14px + var(--safe-t));left:16px;max-width:66%;
+  background:var(--card);border-radius:20px;padding:10px 15px 11px;box-shadow:var(--sh-m);
+  display:flex;flex-direction:column;gap:3px;transform-origin:left top;animation:pop .35s ease}
+.statuschip .r1{display:flex;align-items:center;gap:8px}
+.statuschip .nm{font-family:'Jua';font-size:15.5px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.statuschip .st{font-size:12px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 22%,transparent);flex:none}
+.dot.off{background:#B7C0D8;box-shadow:0 0 0 4px rgba(183,192,216,.2)}
+.dot.pulse{animation:pulse 1.8s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 40%,transparent)}100%{box-shadow:0 0 0 10px transparent}}
+
+/* 둥근 아이콘 버튼 (메뉴 등) */
+.rbtn{position:absolute;width:48px;height:48px;border-radius:17px;background:var(--card);
+  box-shadow:var(--sh-m);display:flex;align-items:center;justify-content:center;top:calc(14px + var(--safe-t));right:16px}
+.rbtn svg{width:24px;height:24px}
+
+/* 열람 알림 토스트 칩 */
+.accesschip{position:absolute;top:calc(74px + var(--safe-t));left:50%;transform:translateX(-50%);
+  background:var(--pink-bg);color:var(--pink-d);border:1px solid var(--pink-line);
+  border-radius:16px;padding:8px 14px;font-size:12.5px;box-shadow:var(--sh-s);display:flex;align-items:center;gap:7px;
+  max-width:84%;animation:pop .4s ease}
+
+/* 하단 영역 */
+.bottom{position:absolute;left:16px;right:16px;bottom:calc(18px + var(--safe-b));display:flex;flex-direction:column;gap:11px}
+.locchip{align-self:center;background:var(--card);border-radius:16px;padding:7px 14px;font-size:12px;color:var(--muted);box-shadow:var(--sh-s)}
+.sharecard{background:var(--card);border-radius:26px;min-height:60px;box-shadow:var(--sh-m);
+  display:flex;align-items:center;gap:13px;padding:11px 12px 11px 18px}
+.sharecard .txt{flex:1;min-width:0}
+.sharecard .t1{font-family:'Jua';font-size:15.5px}
+.sharecard .t2{font-size:11.5px;color:var(--muted);margin-top:1px}
+
+/* 토글 스위치 (48 터치) */
+.switch{width:58px;height:48px;flex:none;position:relative;border-radius:16px}
+.switch .track{position:absolute;top:9px;left:4px;right:4px;height:30px;border-radius:16px;background:#C9D2E6;transition:background .25s}
+.switch .knob{position:absolute;top:12px;left:7px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .25s}
+.switch[aria-checked="true"] .track{background:var(--pink)}
+.switch[aria-checked="true"] .knob{transform:translateX(23px)}
+
+/* 빈 상태 (짝꿍 없음) */
+.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:30px 34px;gap:4px;background:radial-gradient(130% 80% at 50% 30%,var(--bg),var(--bg2))}
+.empty h2{font-family:'Jua';font-size:21px;margin-top:20px}
+.empty p{font-size:14px;color:var(--muted);margin-top:8px;line-height:1.7}
+.empty .cta{margin-top:26px;width:100%;max-width:300px}
+/* 빈 상태는 컨트롤 아래 레이어 */
+.empty{z-index:2}
+.statuschip,.rbtn,.accesschip,.bottom{z-index:3}
+
+/* 공통 버튼 */
+.btn{min-height:52px;border-radius:24px;font-family:'Jua';font-size:16.5px;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;transition:transform .12s}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--pink);color:#fff;box-shadow:0 12px 26px color-mix(in srgb,var(--pink) 42%,transparent)}
+.btn.ghost{background:var(--card);color:var(--ink);border:2px solid var(--line2)}
+.btn.soft{background:var(--pink-bg);color:var(--pink-d)}
+.btn.sm{min-height:48px;font-size:15px;border-radius:20px}
+.btn[disabled]{opacity:.5}
+
+/* ================= 온보딩 ================= */
+#onboard{position:absolute;inset:0;z-index:40;background:radial-gradient(130% 70% at 50% 8%,var(--bg),var(--bg2));
+  display:flex;flex-direction:column;padding:calc(26px + var(--safe-t)) 26px calc(24px + var(--safe-b))}
+.ob-top{display:flex;align-items:center;justify-content:space-between;height:30px}
+.ob-back{font-size:24px;color:var(--muted);width:40px;height:40px;display:flex;align-items:center;margin-left:-8px}
+.ob-step{font-size:13px;color:var(--faint)}
+.ob-body{flex:1;display:flex;flex-direction:column;justify-content:center}
+.ob-slide{display:none;flex-direction:column}
+.ob-slide.on{display:flex;animation:slidein .4s ease}
+@keyframes slidein{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+.ob-slide h1{font-family:'Jua';font-size:26px;letter-spacing:-.5px;line-height:1.35}
+.ob-slide .lead{font-size:14.5px;color:var(--muted);margin-top:13px;line-height:1.75}
+.ob-art{display:flex;justify-content:center;margin-bottom:10px}
+.field{margin-top:22px}
+.field input{width:100%;height:58px;border-radius:18px;background:var(--card);border:2px solid var(--line2);
+  padding:0 18px;font-family:'Jua';font-size:19px;color:var(--ink);outline:none;transition:border-color .2s}
+.field input:focus{border-color:var(--pink)}
+.field input::placeholder{color:var(--faint);font-size:17px}
+.bullets{margin-top:20px;display:flex;flex-direction:column;gap:12px}
+.bul{display:flex;gap:11px;align-items:flex-start;font-size:13.5px;color:var(--ink);line-height:1.6}
+.bul svg{flex:none;margin-top:1px}
+.bul b{font-family:'Jua';font-weight:400}
+.consent-card{margin-top:18px;background:var(--card);border-radius:20px;padding:16px 18px;box-shadow:var(--sh-s)}
+.perm{display:flex;gap:13px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--line)}
+.perm:last-child{border-bottom:0}
+.perm .pi{width:42px;height:42px;border-radius:13px;background:var(--pink-bg);display:flex;align-items:center;justify-content:center;flex:none}
+.perm .pt1{font-family:'Jua';font-size:14.5px}
+.perm .pt2{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.55}
+.ob-dots{display:flex;gap:7px;justify-content:center;margin:18px 0}
+.ob-dots i{width:7px;height:7px;border-radius:5px;background:var(--line2);transition:all .3s}
+.ob-dots i.on{width:22px;background:var(--pink)}
+.ob-foot{display:flex;flex-direction:column;gap:10px}
+.linkish{background:none;color:var(--muted);font-size:13px;text-decoration:underline;align-self:center;padding:8px}
+
+/* ================= 바텀시트 ================= */
+#scrim{position:absolute;inset:0;background:var(--scrim);z-index:50;opacity:0;transition:opacity .3s;pointer-events:none}
+#scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:60;background:var(--sheet);
+  border-radius:30px 30px 0 0;padding:12px 22px calc(26px + var(--safe-b));box-shadow:var(--sh-l);
+  transform:translateY(110%);transition:transform .34s cubic-bezier(.22,1,.36,1);max-height:92%;overflow:auto}
+.sheet.on{transform:translateY(0)}
+.grab{width:42px;height:5px;border-radius:3px;background:var(--line2);margin:2px auto 14px}
+.sheet h2{font-family:'Jua';font-size:20px;text-align:center}
+.sheet .sub{text-align:center;font-size:13px;color:var(--muted);margin-top:6px;line-height:1.6}
+
+/* 초대 코드 박스 */
+.codebox{background:var(--pink-bg);border:1.5px dashed var(--pink-line);border-radius:20px;
+  padding:20px 14px;margin:18px 0 12px;text-align:center}
+.codebox .code{font-family:'Jua';font-size:clamp(30px,10vw,40px);letter-spacing:4px;color:var(--pink-d)}
+.timer{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:13px;margin-bottom:16px}
+.timer b{color:var(--ink)}
+.timer svg{display:block}
+.orline{display:flex;align-items:center;gap:12px;color:var(--faint);font-size:12px;margin:18px 2px 14px}
+.orline span{flex:1;height:1px;background:var(--line)}
+.row2{display:flex;gap:10px}.row2 .btn{flex:1}
+
+/* 코드 입력 */
+.codeinput{width:100%;height:60px;border-radius:18px;background:var(--card);border:2px solid var(--line2);
+  text-align:center;font-family:'Jua';font-size:26px;letter-spacing:4px;color:var(--ink);outline:none;text-transform:uppercase;margin:18px 0 6px}
+.codeinput:focus{border-color:var(--pink)}
+.codeinput::placeholder{color:var(--faint);letter-spacing:3px}
+.err{color:var(--pink-d);font-size:13px;text-align:center;min-height:19px;margin-top:4px}
+
+/* 메뉴 — 아이콘 타일 반복 대신 타이포 위계로 리듬 */
+.menu{display:flex;flex-direction:column;margin-top:6px}
+.mi{display:flex;align-items:center;gap:12px;min-height:56px;padding:4px 2px;border-bottom:1px solid var(--line);text-align:left;width:100%}
+.mi:last-child{border-bottom:0}
+.mi .ml{flex:1;font-family:'Jua';font-size:16px}
+.mi .val{font-size:13.5px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mi .chev{color:var(--faint);font-size:22px;line-height:1}
+.mi.static{cursor:default}
+.mi.danger{margin-top:14px;border:0;background:var(--pink-bg);border-radius:16px;padding:0 16px;min-height:54px}
+.mi.danger .ml{color:var(--pink-d);font-size:15px}
+.mi.danger .chev{color:var(--pink-d)}
+.seg{display:flex;background:var(--bg);border-radius:14px;padding:4px;gap:4px}
+.seg button{flex:1;min-height:40px;border-radius:11px;font-size:13px;color:var(--muted)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--sh-s);font-family:'Jua'}
+
+/* 성공 연출 */
+#celebrate{position:absolute;inset:0;z-index:70;display:none;align-items:center;justify-content:center;
+  flex-direction:column;background:radial-gradient(120% 70% at 50% 40%,color-mix(in srgb,var(--pink) 16%,var(--bg)),var(--bg));text-align:center;padding:40px}
+#celebrate.on{display:flex;animation:pop .4s ease}
+.check{width:108px;height:108px;border-radius:50%;background:var(--pink);display:flex;align-items:center;justify-content:center;
+  box-shadow:0 16px 40px color-mix(in srgb,var(--pink) 50%,transparent);animation:bounce .6s cubic-bezier(.22,1.3,.5,1)}
+#celebrate h2{font-family:'Jua';font-size:24px;margin-top:24px}
+#celebrate p{color:var(--muted);margin-top:8px;font-size:14px}
+.conf{position:absolute;width:10px;height:14px;border-radius:2px;top:-20px;animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(110vh) rotate(540deg);opacity:.9}}
+@keyframes bounce{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes pop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+
+/* 토스트 */
+#toast{position:absolute;left:50%;bottom:calc(96px + var(--safe-b));transform:translateX(-50%) translateY(20px);
+  background:var(--ink);color:#fff;padding:12px 20px;border-radius:16px;font-size:13.5px;z-index:80;
+  box-shadow:var(--sh-l);opacity:0;transition:all .3s;max-width:88%;text-align:center;pointer-events:none}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+:root[data-theme="dark"] #toast, :root.dark #toast{background:#000}
+
+/* 확인 다이얼로그 */
+#dialog{position:absolute;inset:0;z-index:90;display:none;align-items:center;justify-content:center;padding:28px;background:var(--scrim)}
+#dialog.on{display:flex;animation:pop .25s ease}
+.dlg{background:var(--sheet);border-radius:26px;padding:26px 24px 20px;width:100%;max-width:340px;box-shadow:var(--sh-l)}
+.dlg h3{font-family:'Jua';font-size:19px;text-align:center}
+.dlg p{font-size:13.5px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.65}
+.dlg .acts{display:flex;gap:10px;margin-top:22px}.dlg .acts .btn{flex:1}
+.btn.warn{background:var(--pink);color:#fff}
+
+/* Main-screen refinement: the miniature scene owns the visual hierarchy. */
+.statuschip{
+  top:calc(19px + var(--safe-t));left:20px;max-width:calc(100% - 98px);
+  background:transparent;border:0;border-radius:0;padding:0;box-shadow:none;
+  gap:2px;animation:none;pointer-events:none;
+}
+.status-kicker{font-size:10.5px;line-height:1.45;color:var(--muted);letter-spacing:.01em}
+.statuschip .r1{gap:9px;align-items:center}
+.statuschip .nm{font-size:23px;max-width:min(57vw,270px);line-height:1.25}
+.statuschip .st{font-size:12px;max-width:calc(100vw - 110px);white-space:normal;line-height:1.45}
+.statuschip .dot{height:7px;width:7px;box-shadow:none}
+.statuschip .dot.pulse{animation:none}
+.rbtn{top:calc(18px + var(--safe-t));right:19px;width:44px;height:44px;border-radius:15px;
+  border:1px solid color-mix(in srgb,var(--line2) 66%,transparent);
+  background:color-mix(in srgb,var(--card) 92%,transparent);box-shadow:0 3px 10px rgba(44,49,80,.06)}
+.rbtn svg{width:20px;height:20px}
+.bottom{left:18px;right:18px;bottom:calc(17px + var(--safe-b));gap:6px}
+.locchip{align-self:flex-start;padding:3px 7px 4px;background:transparent;border:0;border-radius:0;
+  box-shadow:none;font-size:12px;line-height:1.35;color:var(--ink-soft,var(--muted));text-shadow:0 1px 0 var(--bg)}
+.sharecard{min-height:66px;border:1px solid var(--line);border-radius:18px;padding:11px 12px 11px 15px;
+  gap:11px;box-shadow:0 5px 20px rgba(44,49,80,.055);
+  background:color-mix(in srgb,var(--card) 96%,transparent)}
+.sharecard .t1{font-size:15px;line-height:1.3}
+.sharecard .t2{font-size:11.5px;line-height:1.4;margin-top:3px}
+.sharecard>.dot{height:7px;width:7px;box-shadow:none}
+.sharecard>.dot.pulse{animation:none}
+.sharecard .txt{padding-right:2px}
+.switch{width:57px;height:48px;border-radius:12px}
+.switch .track{background:#D1D6E3}
+.accesschip{top:calc(96px + var(--safe-t));left:20px;transform:none;max-width:calc(100% - 40px);
+  border:1px solid var(--pink-line);border-radius:12px;padding:7px 11px;font-size:11.5px;
+  box-shadow:0 4px 12px rgba(44,49,80,.05)}
+.empty{background:var(--bg)}
+.empty h2{font-size:22px}
+.btn.primary{box-shadow:none}
+.btn{border-radius:16px}
+.sheet{border-radius:23px 23px 0 0}
+@media(max-width:360px){
+  .statuschip{left:15px;top:calc(15px + var(--safe-t))}
+  .statuschip .nm{font-size:21px}
+  .statuschip .st{font-size:11px}
+  .rbtn{right:15px;top:calc(14px + var(--safe-t))}
+  .bottom{left:12px;right:12px}
+}
+@media(prefers-reduced-motion:reduce){.statuschip,.accesschip{animation:none}}
+</style>
+</head>
+<body>
+
+<!-- 지도 -->
+<div id="maplayer">
+  <iframe id="mapframe" title="짝꿍 지도" allow="geolocation"></iframe>
+  <!-- 미리보기/대체용 가짜 디오라마 -->
+  <svg id="faux" viewBox="0 0 360 760" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EAF1FB"/><stop offset="1" stop-color="#DCE6F5"/></linearGradient>
+      <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#2C3150" flood-opacity="0.1"/></filter>
+    </defs>
+    <rect width="360" height="760" fill="url(#sky)"/>
+    <ellipse cx="180" cy="430" rx="250" ry="250" fill="#E7EEDD" opacity=".65"/>
+    <path d="M-20 560 C 80 520,120 640,240 600 S 400 560,400 620 L400 760 L-20 760Z" fill="#CFE3F2" opacity=".8"/>
+    <g stroke="#F3F6FB" stroke-width="22" stroke-linecap="round" fill="none"><path d="M30 120 L340 300"/><path d="M60 700 L300 180"/><path d="M-10 360 L380 440"/></g>
+    <g stroke="#DDE6F1" stroke-width="2" stroke-dasharray="6 10" fill="none"><path d="M30 120 L340 300"/><path d="M60 700 L300 180"/><path d="M-10 360 L380 440"/></g>
+    <g filter="url(#soft)">
+      <rect x="58" y="310" width="46" height="46" rx="10" fill="#FBD5DE"/><rect x="112" y="328" width="40" height="40" rx="10" fill="#CFE0F6"/>
+      <rect x="76" y="366" width="38" height="34" rx="9" fill="#FCE9BE"/><rect x="236" y="260" width="50" height="50" rx="12" fill="#D6ECD9"/>
+      <rect x="286" y="286" width="34" height="34" rx="9" fill="#FBD5DE"/><rect x="212" y="498" width="44" height="44" rx="11" fill="#E2D7F3"/>
+      <rect x="150" y="160" width="40" height="40" rx="10" fill="#CFE0F6"/></g>
+    <g><circle cx="140" cy="430" r="13" fill="#BEDDB4"/><circle cx="300" cy="370" r="12" fill="#A9D1A0"/><circle cx="120" cy="280" r="11" fill="#A9D1A0"/><circle cx="258" cy="570" r="13" fill="#BEDDB4"/></g>
+    <g transform="translate(180 350)"><ellipse cx="0" cy="40" rx="24" ry="7" fill="#2C3150" opacity=".12"/>
+      <circle cx="0" cy="26" r="28" fill="none" stroke="#FF6F91" stroke-width="3" opacity=".35"/>
+      <path d="M0 -38 C-26 -38,-42 -20,-42 4 C-42 30,0 68,0 68 C0 68,42 30,42 4 C42 -20,26 -38,0 -38Z" fill="#FF6F91"/>
+      <circle cx="0" cy="2" r="22" fill="#fff"/><text x="0" y="11" font-size="24" text-anchor="middle">🐨</text></g>
+  </svg>
+</div>
+
+<!-- 메인 오버레이 -->
+<div id="overlay" class="hide">
+  <div class="statuschip hide" id="statuschip">
+    <span class="status-kicker">지금 너는 어디쯤</span>
+    <div class="r1"><span class="nm jua" id="pname">짝꿍</span><span class="dot pulse" id="pdot" aria-hidden="true"></span></div>
+    <span class="st" id="pstate">위치를 불러오는 중…</span>
+  </div>
+  <button class="rbtn" id="menuBtn" aria-label="메뉴">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <div class="accesschip hide" id="accesschip" role="button"></div>
+
+  <!-- 빈 상태 -->
+  <div class="empty hide" id="empty">
+    <svg width="168" height="140" viewBox="0 0 168 140"><ellipse cx="84" cy="128" rx="54" ry="10" fill="#2C3150" opacity=".07"/>
+      <path d="M52 26C35 26 24 39 24 55C24 75 52 102 52 102C52 102 80 75 80 55C80 39 69 26 52 26Z" fill="#FF6F91"/><circle cx="52" cy="52" r="18" fill="#fff"/>
+      <path d="M116 44C101 44 92 55 92 68C92 85 116 108 116 108C116 108 140 85 140 68C140 55 131 44 116 44Z" fill="#9CB8E8"/><circle cx="116" cy="66" r="15" fill="#fff"/>
+      <path d="M70 76 q16 16 34 2" stroke="#FF6F91" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-dasharray="2 8"/></svg>
+    <h2>아직 짝꿍이 없어요</h2>
+    <p>초대 코드를 주고받아 둘을 연결해요</p>
+    <button class="btn primary cta" id="emptyPair">짝꿍 연결하기</button>
+  </div>
+
+  <!-- 하단 -->
+  <div class="bottom" id="bottom">
+    <div class="locchip hide" id="locchip"></div>
+    <div class="sharecard">
+      <span class="dot off" id="sdot"></span>
+      <div class="txt"><div class="t1" id="sharetitle">내 위치 공유 꺼짐</div><div class="t2" id="sharesub">켜면 짝꿍 화면에 내가 나타나요</div></div>
+      <button class="switch" id="shareSwitch" role="switch" aria-checked="false" aria-label="위치 공유"><span class="track"></span><span class="knob"></span></button>
+    </div>
+  </div>
+</div>
+
+<!-- 온보딩 -->
+<div id="onboard" class="hide">
+  <div class="ob-top">
+    <button class="ob-back hide" id="obBack" aria-label="뒤로">‹</button><span style="flex:1"></span>
+    <span class="ob-step" id="obStep">1 / 4</span>
+  </div>
+  <div class="ob-body">
+    <!-- 1 소개 -->
+    <section class="ob-slide on" data-i="0">
+      <div class="ob-art">
+        <svg width="172" height="150" viewBox="0 0 172 150"><ellipse cx="86" cy="134" rx="54" ry="11" fill="#2C3150" opacity=".08"/>
+          <path d="M54 28C37 28 25 41 25 58C25 79 54 108 54 108C54 108 83 79 83 58C83 41 71 28 54 28Z" fill="#FF6F91"/><circle cx="54" cy="55" r="19" fill="#fff"/><text x="54" y="63" font-size="20" text-anchor="middle">🐨</text>
+          <path d="M120 44C105 44 94 55 94 70C94 88 120 114 120 114C120 114 146 88 146 70C146 55 135 44 120 44Z" fill="#9CB8E8"/><circle cx="120" cy="68" r="15" fill="#fff"/><text x="120" y="75" font-size="16" text-anchor="middle">🐰</text>
+          <path d="M74 80 q18 16 36 4" stroke="#FF6F91" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-dasharray="2 8"/></svg>
+      </div>
+      <h1>지금 너는<br>어디쯤?</h1>
+      <p class="lead">서로의 하루를 작은 미니어처 지도로. 걷기·버스·지하철까지 살아 움직여요.</p>
+    </section>
+    <!-- 2 이름 -->
+    <section class="ob-slide" data-i="1">
+      <h1>짝꿍에게 보일<br>내 이름</h1>
+      <p class="lead">지도 위에서 이 이름으로 불려요. 나중에 메뉴에서 바꿀 수 있어요.</p>
+      <div class="field"><input id="obName" maxlength="20" placeholder="예: 하루" autocomplete="off"></div>
+    </section>
+    <!-- 3 동의 -->
+    <section class="ob-slide" data-i="2">
+      <h1>위치 공유 동의</h1>
+      <p class="lead">공유를 켜 둔 동안에만 내 위치를 짝꿍에게 보여줘요.</p>
+      <div class="consent-card" id="consentCard">
+        <div class="bul"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#FF6F91"/><path d="M5 9l2.5 2.5L13 6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>만 14세 이상</b>만 이용할 수 있어요.</span></div>
+        <div class="bul" style="margin-top:12px"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#FF6F91"/><path d="M5 9l2.5 2.5L13 6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>공유 중에는 몇 초마다 위치를 수집해 <b>연결된 짝꿍에게만</b> 보내요.</span></div>
+        <div class="bul" style="margin-top:12px"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#FF6F91"/><path d="M5 9l2.5 2.5L13 6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>서버엔 <b>가장 최근 위치 한 개</b>만 남고, 끄면 지워져요.</span></div>
+        <div class="bul" style="margin-top:12px"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#FF6F91"/><path d="M5 9l2.5 2.5L13 6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>언제든 <b>내 정보 완전히 삭제</b>로 모두 지울 수 있어요.</span></div>
+      </div>
+    </section>
+    <!-- 4 권한 -->
+    <section class="ob-slide" data-i="3">
+      <h1>원활한 공유를 위해</h1>
+      <p class="lead">다음 권한이 필요해요. '허용하고 시작'을 누르면 순서대로 물어봐요.</p>
+      <div class="consent-card" style="margin-top:18px">
+        <div class="perm"><span class="pi">📍</span><div><div class="pt1">위치</div><div class="pt2">짝꿍에게 내 위치를 보여주려면 꼭 필요해요</div></div></div>
+        <div class="perm"><span class="pi">🔔</span><div><div class="pt1">알림</div><div class="pt2">공유 중임을 알려주는 작은 알림을 띄워요</div></div></div>
+        <div class="perm"><span class="pi">🏃</span><div><div class="pt1">동작 인식</div><div class="pt2">걷기·버스·지하철을 구분해 더 생생하게</div></div></div>
+        <div class="perm"><span class="pi">🔋</span><div><div class="pt1">배터리 제외(선택)</div><div class="pt2">잠금 중에도 위치가 끊기지 않게</div></div></div>
+      </div>
+    </section>
+  </div>
+  <div class="ob-dots" id="obDots"><i class="on"></i><i></i><i></i><i></i></div>
+  <div class="ob-foot">
+    <button class="btn primary" id="obNext">다음</button>
+    <button class="linkish hide" id="obSkip">약관 보기</button>
+  </div>
+</div>
+
+<!-- 성공 연출 -->
+<div id="celebrate"><div class="check"><svg width="54" height="54" viewBox="0 0 54 54"><path d="M14 28l9 9 18-20" stroke="#fff" stroke-width="5.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <h2 id="celTitle">짝꿍과 연결됐어요!</h2><p id="celSub">이제 서로의 작은 지도가 보여요</p></div>
+
+<!-- 바텀시트 -->
+<div id="scrim"></div>
+
+<section class="sheet" id="sheetPair" aria-modal="true">
+  <div class="grab"></div>
+  <!-- 짝꿍 없음 -->
+  <div data-pane="choose">
+    <h2>짝꿍 연결</h2>
+    <p class="sub">한 사람이 초대 코드를 만들고,<br>다른 사람이 그 코드를 입력하면 연결돼요</p>
+    <div style="margin-top:20px;display:flex;flex-direction:column;gap:11px">
+      <button class="btn primary" id="pMake">초대 코드 만들기</button>
+      <button class="btn ghost" id="pEnter">짝꿍이 준 코드 입력하기</button>
+    </div>
+  </div>
+  <!-- 이미 연결됨 -->
+  <div data-pane="paired" class="hide">
+    <h2 id="pairedTitle">짝꿍과 연결됨</h2>
+    <p class="sub" id="pairedSub">지금 짝꿍과 서로의 위치를 보고 있어요</p>
+    <div style="margin-top:20px;display:flex;flex-direction:column;gap:11px">
+      <button class="btn ghost" id="pReconnect">다른 짝꿍으로 다시 연결</button>
+      <button class="btn soft" id="pUnpair">짝꿍 연결 끊기</button>
+    </div>
+  </div>
+  <!-- 초대 코드 발급 -->
+  <div data-pane="invite" class="hide">
+    <h2>초대 코드</h2>
+    <p class="sub">짝꿍 앱의 '코드 입력'에 넣어 주세요</p>
+    <div class="codebox"><div class="code" id="inviteCode">----</div></div>
+    <div class="timer"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="var(--line2)" stroke-width="2"/><path d="M8 8V4" stroke="var(--pink)" stroke-width="2" stroke-linecap="round"/></svg>남은 시간 <b id="inviteTimer">10:00</b></div>
+    <div class="row2"><button class="btn primary sm" id="inviteCopy">코드 복사</button><button class="btn ghost sm" id="inviteShare">보내기</button></div>
+    <div class="orline"><span></span>또는<span></span></div>
+    <button class="btn ghost sm" id="inviteToEnter">짝꿍이 준 코드 입력하기</button>
+  </div>
+  <!-- 코드 입력 -->
+  <div data-pane="enter" class="hide">
+    <h2>짝꿍의 초대 코드</h2>
+    <p class="sub">받은 8자리 코드를 넣어 주세요</p>
+    <input class="codeinput" id="enterCode" maxlength="9" placeholder="AB12-CD34" autocomplete="off" inputmode="text">
+    <div class="err" id="enterErr"></div>
+    <button class="btn primary" id="enterGo" style="margin-top:8px">연결하기</button>
+  </div>
+</section>
+
+<section class="sheet" id="sheetMenu" aria-modal="true">
+  <div class="grab"></div>
+  <h2 style="margin-bottom:10px">더보기</h2>
+  <nav class="menu">
+    <button class="mi" id="mWebLink"><span class="ml">웹으로 보기 연결</span><span class="chev">›</span></button>
+    <button class="mi" id="mWebRevoke"><span class="ml">웹 연결 모두 끊기</span><span class="chev">›</span></button>
+    <button class="mi" id="mName"><span class="ml">내 이름</span><span class="val" id="mNameCur">하루</span></button>
+    <button class="mi" id="mBattery"><span class="ml">배터리 설정</span><span class="chev">›</span></button>
+    <button class="mi" id="mTerms"><span class="ml">약관·개인정보처리방침</span><span class="chev">›</span></button>
+    <div class="mi static" style="flex-direction:column;align-items:stretch;gap:11px;padding:14px 0 6px">
+      <span class="ml">화면 테마</span>
+      <div class="seg" id="themeSeg"><button data-t="auto">자동</button><button data-t="light">밝게</button><button data-t="dark">어둡게</button></div></div>
+  </nav>
+  <button class="mi danger" id="mDelete"><span class="ml">내 정보 완전히 삭제</span><span class="chev">›</span></button>
+</section>
+
+<!-- 웹 연결 코드 시트 -->
+<section class="sheet" id="sheetWeb" aria-modal="true">
+  <div class="grab"></div>
+  <h2>웹으로 보기 연결</h2>
+  <p class="sub">PC나 다른 기기 브라우저에서 아래 주소를 열고<br>이 코드를 입력하세요</p>
+  <div class="codebox" style="margin-bottom:8px"><div class="code" id="webCode">----</div></div>
+  <p class="sub" id="webAddr" style="font-size:12px;word-break:break-all"></p>
+  <div class="timer"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="var(--line2)" stroke-width="2"/></svg>10분 동안 한 번만 쓸 수 있어요</div>
+  <button class="btn primary sm" id="webCopy">코드 복사</button>
+</section>
+
+<!-- 이름 바꾸기 시트 -->
+<section class="sheet" id="sheetName" aria-modal="true">
+  <div class="grab"></div>
+  <h2>내 이름</h2>
+  <div class="field" style="margin-top:16px"><input id="nameInput" maxlength="20" placeholder="예: 하루" autocomplete="off"></div>
+  <button class="btn primary" id="nameSave" style="margin-top:16px">저장</button>
+</section>
+
+<!-- 확인 다이얼로그 -->
+<div id="dialog"><div class="dlg"><h3 id="dlgTitle"></h3><p id="dlgMsg"></p>
+  <div class="acts"><button class="btn ghost" id="dlgNo">취소</button><button class="btn warn" id="dlgYes">확인</button></div></div></div>
+
+<!-- 토스트 -->
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ===================== 설정 ===================== */
+const SB_URL='https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY='sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
+const AB = window.AndroidBridge || null;
+const qp = new URLSearchParams(location.search);
+const PREVIEW = qp.get('preview');           // 스크린샷/대체용
+if(PREVIEW) document.body.classList.add('preview');
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+
+/* ===================== 저장소 ===================== */
+const LS={get(k,d){try{const v=localStorage.getItem('wy-'+k);return v==null?d:v;}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem('wy-'+k,v);}catch(e){}}, del(k){try{localStorage.removeItem('wy-'+k);}catch(e){}}};
+
+/* ===================== 네이티브 브리지 ===================== */
+const Native={
+  creds(){ try{ if(AB&&AB.auth){const a=JSON.parse(AB.auth()); if(a&&a.view) return {view:a.view,write:a.write};} }catch(e){}
+    try{const s=LS.get('creds'); if(s) return JSON.parse(s);}catch(e){} return null; },
+  saveCreds(v,w){ if(AB&&AB.setCreds){try{AB.setCreds(v,w);}catch(e){}} else LS.set('creds',JSON.stringify({view:v,write:w})); },
+  isSharing(){ try{ if(AB&&AB.isSharing) return String(AB.isSharing())==='true'; }catch(e){} return LS.get('sharing')==='1'; },
+  startShare(){ if(AB&&AB.startShare){try{AB.startShare();return;}catch(e){}} LS.set('sharing','1'); WY.onShare(true); },
+  stopShare(){ if(AB&&AB.stopShare){try{AB.stopShare();return;}catch(e){}} LS.set('sharing','0'); WY.onShare(false); },
+  status(){ try{ if(AB&&AB.shareStatus) return AB.shareStatus()||''; }catch(e){} return ''; },
+  copy(t){ if(AB&&AB.copy){try{AB.copy(t);return;}catch(e){}} try{navigator.clipboard&&navigator.clipboard.writeText(t);}catch(e){} },
+  shareText(t){ if(AB&&AB.shareText){try{AB.shareText(t);return;}catch(e){}} try{navigator.share?navigator.share({text:t}):Native.copy(t);}catch(e){} },
+  openBattery(){ if(AB&&AB.openBattery)try{AB.openBattery();}catch(e){} else toast('앱 설정 → 배터리에서 제한 없음으로 바꿔주세요'); },
+  openUrl(u){ if(AB&&AB.openUrl){try{AB.openUrl(u);return;}catch(e){}} window.open(u,'_blank'); },
+  requestPermissions(){ if(AB&&AB.requestPermissions)try{AB.requestPermissions();}catch(e){} }
+};
+/* 네이티브 → JS 콜백 */
+window.WY={
+  onShare(on){ LS.set('sharing',on?'1':'0'); paintShare(on); if(on) toast('공유를 켰어요'); },
+  onShareDenied(){ paintShare(false); toast('위치 권한이 있어야 공유할 수 있어요'); },
+  onPermissions(){ /* 권한 응답 후 */ },
+  onStatus(s){ if(s) setShareSub(s); },
+  onResume(){ refreshPartner(); loadAccess(); paintShare(Native.isSharing()); },
+  onBack(){ // 네이티브 뒤로가기: 열린 레이어부터 닫음. 처리하면 true
+    if($('#dialog').classList.contains('on')){ $('#dialog').classList.remove('on'); return true; }
+    if($('#celebrate').classList.contains('on')) return true;
+    if($('#scrim').classList.contains('on')){ closeSheets(); return true; }
+    if(!$('#onboard').classList.contains('hide') && obI>0){ obShow(obI-1); return true; }
+    return false;
+  }
+};
+
+/* ===================== Supabase RPC ===================== */
+async function rpc(fn,body){
+  const r=await fetch(SB_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const tx=await r.text();
+  if(!r.ok) throw new Error(tx||('HTTP '+r.status));
+  try{return JSON.parse(tx);}catch(e){return tx;}
+}
+function creds(){ return Native.creds(); }
+function authBody(extra){ const c=creds()||{}; return Object.assign({p_view_code:c.view||'',p_write_key:c.write||''},extra||{}); }
+async function ensureCreds(){ let c=creds(); if(c&&c.view) return c;
+  const row=await rpc('create_share',{}); const r=Array.isArray(row)?row[0]:row;
+  Native.saveCreds(r.view_code,r.write_key); return {view:r.view_code,write:r.write_key}; }
+
+/* ===================== 상태 ===================== */
+const state={name:LS.get('name',''),partner:LS.get('partner',null),pname:LS.get('pname',null)};
+
+/* ===================== UI 헬퍼 ===================== */
+let toastT;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2800); }
+function openSheet(id){ $('#scrim').classList.add('on'); $(id).classList.add('on'); }
+function closeSheets(){ $('#scrim').classList.remove('on'); $$('.sheet').forEach(s=>s.classList.remove('on')); }
+$('#scrim').addEventListener('click',closeSheets);
+function showPane(sheet,name){ $$(sheet+' [data-pane]').forEach(p=>p.classList.toggle('hide',p.dataset.pane!==name)); }
+function dialog(title,msg,yesLabel,onYes,danger){
+  $('#dlgTitle').textContent=title; $('#dlgMsg').textContent=msg; const y=$('#dlgYes'); y.textContent=yesLabel||'확인';
+  y.className='btn '+(danger?'warn':'primary'); $('#dialog').classList.add('on');
+  y.onclick=()=>{ $('#dialog').classList.remove('on'); onYes&&onYes(); };
+}
+$('#dlgNo').onclick=()=>$('#dialog').classList.remove('on');
+
+/* ===================== 조사 (은/는) ===================== */
+function josa(n){ if(!n) return '는'; const c=n.charCodeAt(n.length-1); return (c>=0xAC00&&c<=0xD7A3)?(((c-0xAC00)%28)?'은':'는'):'는'; }
+
+/* ===================== 라우팅 ===================== */
+function onboarded(){ return LS.get('onboarded')==='1'; }
+function showMain(){
+  $('#onboard').classList.add('hide'); $('#overlay').classList.remove('hide');
+  const has=!!state.partner;
+  $('#empty').classList.toggle('hide',has);
+  $('#statuschip').classList.toggle('hide',!has);
+  const liveMap=has&&!PREVIEW, demoMap=has&&PREVIEW==='main';
+  $('#mapframe').style.display = (liveMap||demoMap)?'block':'none';
+  $('#faux').style.display = PREVIEW&&!demoMap?'block':'none';
+  if((liveMap||demoMap) && $('#mapframe').src.indexOf('app=1')<0){
+    $('#mapframe').src=demoMap?'map-design-preview.html?app=1&demo=1':'map-design-preview.html?app=1';
+  }
+  $('#mNameCur').textContent=state.name||'이름 없음';
+  paintPartner(); paintShare(Native.isSharing());
+}
+
+/* ===================== 짝꿍 표시 ===================== */
+function paintPartner(){
+  if(!state.partner) return;
+  $('#pname').textContent=state.pname||'짝꿍';
+}
+async function refreshPartner(){
+  if(!creds()) return;
+  try{
+    const rows=await rpc('get_partner',authBody());
+    if(Array.isArray(rows)&&rows.length&&rows[0].partner){
+      const o=rows[0]; const was=state.partner;
+      state.partner=o.partner; state.pname=o.partner_name||null;
+      LS.set('partner',state.partner); state.pname?LS.set('pname',state.pname):LS.del('pname');
+      if(!was) showMain(); else paintPartner();
+      return state.partner;
+    } else if(!Array.isArray(rows)||!rows.length||!rows[0].partner){
+      // 서버상 짝꿍 없음 (내가 기록만 갖고 있을 수 있음) — 유지
+    }
+  }catch(e){}
+  return state.partner;
+}
+
+/* ===================== 공유 토글 ===================== */
+function setShareSub(s){ $('#sharesub').textContent=s; }
+function paintShare(on){
+  $('#shareSwitch').setAttribute('aria-checked',on?'true':'false');
+  $('#sdot').className='dot'+(on?' pulse':' off');
+  $('#sharetitle').textContent=on?'내 위치 공유 중':'내 위치 공유 꺼짐';
+  setShareSub(on?(Native.status()||'짝꿍 화면에 내 위치가 보여요'):'켜면 짝꿍 화면에 내가 나타나요');
+}
+async function toggleShare(){
+  const on=Native.isSharing();
+  if(on){ Native.stopShare(); return; }
+  if(LS.get('consent')!=='1'){ toast('먼저 위치 공유에 동의가 필요해요'); return; }
+  try{ setShareSub('준비하는 중이에요…'); await ensureCreds();
+    if(state.name) rpc('set_name',authBody({p_name:state.name})).catch(()=>{});
+    Native.startShare();
+  }catch(e){ toast('서버 연결에 실패했어요'); paintShare(false); }
+}
+$('#shareSwitch').addEventListener('click',toggleShare);
+
+/* 상태 폴링 */
+setInterval(()=>{ if(Native.isSharing()){ const s=Native.status(); if(s) setShareSub(s); } },1500);
+
+/* 지도(iframe)가 보내는 짝꿍 실시간 상태를 상단 칩에 반영 */
+window.addEventListener('message',e=>{
+  const d=e.data; if(!d||d.__wy!==1||!state.partner) return;
+  if(d.name){ state.pname=d.name; LS.set('pname',d.name); $('#pname').textContent=d.name; }
+  const stuck=d.off||d.nopartner||!d.have||d.err;
+  $('#pdot').className='dot'+(stuck?' off':' pulse');
+  $('#pstate').textContent=(d.b&&!stuck)?d.b:d.a;
+});
+
+/* ===================== 열람 알림 ===================== */
+async function loadAccess(){
+  if(!creds()) return;
+  try{
+    const a=await rpc('my_access_summary',authBody());
+    if(!Array.isArray(a)||!a.length) return;
+    const txt='💗 최근 30일 '+a.map(o=>(o.viewer_name||'짝꿍')+josa(o.viewer_name)+' '+o.views+'번').join(', ')+' 내 위치를 봤어요';
+    const chip=$('#accesschip'); chip.textContent=txt; chip.classList.remove('hide');
+    chip.onclick=()=>chip.classList.add('hide');
+  }catch(e){}
+}
+
+/* ===================== 짝꿍 연결 ===================== */
+let inviteInt;
+function openPair(){
+  if(state.partner){ showPane('#sheetPair','paired'); $('#pairedTitle').textContent=(state.pname||'짝꿍')+'과(와) 연결됨'; }
+  else showPane('#sheetPair','choose');
+  openSheet('#sheetPair');
+}
+$('#menuBtn').onclick=()=>openSheet('#sheetMenu');
+$('#emptyPair').onclick=openPair;
+$('#pMake').onclick=makeInvite; $('#pEnter').onclick=()=>showPane('#sheetPair','enter');
+$('#inviteToEnter').onclick=()=>showPane('#sheetPair','enter');
+$('#pReconnect').onclick=()=>showPane('#sheetPair','choose');
+$('#pUnpair').onclick=()=>dialog('짝꿍 연결 끊기','서로의 위치가 더 이상 보이지 않아요.','연결 끊기',doUnpair,true);
+
+async function makeInvite(){
+  try{ showPane('#sheetPair','invite'); $('#inviteCode').textContent='…';
+    await ensureCreds();
+    let code=await rpc('pair_create',authBody()); code=String(code).replace(/"/g,'');
+    const shown=code.length===8?code.slice(0,4)+'-'+code.slice(4):code;
+    $('#inviteCode').textContent=shown;
+    $('#inviteCopy').onclick=()=>{Native.copy(shown);toast('코드를 복사했어요');};
+    $('#inviteShare').onclick=()=>Native.shareText('내 초대 코드 '+shown+' — 「지금 너는 어디쯤」 앱에서 입력해줘');
+    startTimer(600); pollPartner(0);
+  }catch(e){ $('#inviteCode').textContent='오류'; toast('코드를 만들지 못했어요'); }
+}
+function startTimer(sec){ clearInterval(inviteInt); const end=Date.now()+sec*1000;
+  const tick=()=>{ let s=Math.max(0,Math.round((end-Date.now())/1000)); $('#inviteTimer').textContent=(s/60|0)+':'+String(s%60).padStart(2,'0'); if(s<=0)clearInterval(inviteInt); };
+  tick(); inviteInt=setInterval(tick,1000); }
+async function pollPartner(n){
+  if(n>200||!$('#sheetPair').classList.contains('on')) return;
+  const before=state.partner; await refreshPartner();
+  if(state.partner&&state.partner!==before){ clearInterval(inviteInt); celebrate('짝꿍과 연결됐어요!','이제 서로의 작은 지도가 보여요'); return; }
+  setTimeout(()=>pollPartner(n+1),3000);
+}
+$('#enterGo').onclick=async()=>{
+  const raw=$('#enterCode').value.replace(/[^A-Za-z0-9]/g,'').toUpperCase(); const err=$('#enterErr'); err.textContent='';
+  if(raw.length<8){ err.textContent='8자리 코드를 넣어 주세요'; return; }
+  try{ await ensureCreds();
+    let other=await rpc('pair_accept',authBody({p_code:raw})); other=String(other).replace(/"/g,'');
+    state.partner=other; LS.set('partner',other); await refreshPartner();
+    celebrate('짝꿍과 연결됐어요!','이제 서로의 작은 지도가 보여요');
+  }catch(e){ const m=String(e.message);
+    err.textContent=/pair code|device/.test(m)?'이건 웹 연결 코드예요':/invite expired|not found/.test(m)?'코드가 틀렸거나 10분이 지났어요':/own code/.test(m)?'내가 만든 코드는 넣을 수 없어요':'연결에 실패했어요'; }
+};
+async function doUnpair(){
+  try{ await rpc('unpair',authBody()); }catch(e){}
+  state.partner=null; state.pname=null; LS.del('partner'); LS.del('pname');
+  closeSheets(); $('#mapframe').src='about:blank'; showMain(); toast('짝꿍 연결을 끊었어요');
+}
+
+/* 성공 연출 */
+function celebrate(title,sub){
+  closeSheets(); $('#celTitle').textContent=title; $('#celSub').textContent=sub;
+  const c=$('#celebrate'); c.classList.add('on');
+  const colors=['#FF6F91','#9CB8E8','#FCE9BE','#BEDDB4','#E2D7F3'];
+  for(let i=0;i<28;i++){ const d=document.createElement('i'); d.className='conf';
+    d.style.left=Math.random()*100+'%'; d.style.background=colors[i%5];
+    d.style.animationDuration=(1.4+Math.random()*1.4)+'s'; d.style.animationDelay=(Math.random()*.3)+'s'; c.appendChild(d); }
+  setTimeout(()=>{ c.classList.remove('on'); c.querySelectorAll('.conf').forEach(x=>x.remove()); showMain(); },2600);
+}
+
+/* ===================== 메뉴 동작 ===================== */
+$('#mWebLink').onclick=async()=>{
+  try{ await ensureCreds(); let code=await rpc('device_link_create',authBody()); code=String(code).replace(/"/g,'');
+    const shown=code.length===8?code.slice(0,4)+'-'+code.slice(4):code;
+    $('#webCode').textContent=shown; $('#webAddr').textContent=location.origin+location.pathname.replace(/app\.html$/,'');
+    $('#webCopy').onclick=()=>{Native.copy(shown);toast('코드를 복사했어요');};
+    openSheet('#sheetWeb');
+  }catch(e){ toast('코드를 만들지 못했어요'); }
+};
+$('#mWebRevoke').onclick=()=>dialog('웹 연결 모두 끊기','연결해 둔 모든 브라우저에서 짝꿍 위치가 더 이상 보이지 않아요.','모두 끊기',async()=>{
+  try{ await rpc('devices_revoke_all',authBody()); toast('웹 연결을 모두 끊었어요'); }catch(e){ toast('실패했어요'); } },true);
+$('#mName').onclick=()=>{ $('#nameInput').value=state.name||''; openSheet('#sheetName'); };
+$('#nameSave').onclick=async()=>{ const n=$('#nameInput').value.trim(); if(!n) return;
+  state.name=n; LS.set('name',n); $('#mNameCur').textContent=n; closeSheets(); toast('이름을 저장했어요');
+  try{ await ensureCreds(); rpc('set_name',authBody({p_name:n})).catch(()=>{}); }catch(e){} };
+$('#mBattery').onclick=()=>{ closeSheets(); Native.openBattery(); };
+$('#mTerms').onclick=()=>Native.openUrl((location.origin+location.pathname).replace(/app\.html$/,'')+'terms.html');
+$('#mDelete').onclick=()=>dialog('내 정보 완전히 삭제','서버에서 내 위치·이름·짝꿍 연결·열람 기록을 모두 지워요. 되돌릴 수 없어요.','완전히 삭제',doDelete,true);
+async function doDelete(){
+  Native.stopShare();
+  try{ if(creds()) await rpc('delete_me',authBody()); }catch(e){}
+  ['creds','name','partner','pname','consent','onboarded','sharing'].forEach(LS.del);
+  state.partner=null; state.pname=null; state.name='';
+  closeSheets(); $('#mapframe').src='about:blank'; toast('내 정보를 모두 지웠어요');
+  setTimeout(()=>{ location.href='app.html'; },900);
+}
+
+/* ===================== 테마 ===================== */
+function applyTheme(t){ const r=document.documentElement;
+  if(t==='auto'){ r.removeAttribute('data-theme'); } else r.setAttribute('data-theme',t);
+  LS.set('theme',t); $$('#themeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.t===t)); }
+$$('#themeSeg button').forEach(b=>b.onclick=()=>applyTheme(b.dataset.t));
+applyTheme(LS.get('theme','auto'));
+
+/* ===================== 온보딩 ===================== */
+let obI=0;
+function obShow(i){
+  obI=i; $$('.ob-slide').forEach(s=>s.classList.toggle('on',+s.dataset.i===i));
+  $$('#obDots i').forEach((d,k)=>d.classList.toggle('on',k===i));
+  $('#obStep').textContent=(i+1)+' / 4'; $('#obBack').classList.toggle('hide',i===0);
+  $('#obSkip').classList.toggle('hide',i!==2);
+  const next=$('#obNext'); next.textContent=['다음','다음','동의하고 계속','권한 허용하고 시작'][i];
+  if(i===1) setTimeout(()=>$('#obName').focus(),250);
+}
+$('#obBack').onclick=()=>{ if(obI>0) obShow(obI-1); };
+$('#obSkip').onclick=()=>Native.openUrl((location.origin+location.pathname).replace(/app\.html$/,'')+'terms.html');
+$('#obNext').onclick=async()=>{
+  if(obI===1){ const n=$('#obName').value.trim(); if(!n){ $('#obName').focus(); toast('이름을 넣어 주세요'); return; } state.name=n; LS.set('name',n); }
+  if(obI===2){ LS.set('consent','1'); LS.set('consent_at',Date.now()); }
+  if(obI<3){ obShow(obI+1); return; }
+  // 완료
+  LS.set('onboarded','1');
+  try{ await ensureCreds(); if(state.name) rpc('set_name',authBody({p_name:state.name})).catch(()=>{}); }catch(e){}
+  Native.requestPermissions();
+  showMain(); refreshPartner(); loadAccess();
+};
+
+/* ===================== 미리보기 하네스 ===================== */
+function preview(){
+  const th=qp.get('theme'); if(th) applyTheme(th);
+  const scr=PREVIEW;
+  if(scr.indexOf('onboard')===0){ $('#onboard').classList.remove('hide'); obShow(+(qp.get('step')||0)); return; }
+  // main 계열
+  if(scr!=='main-empty'){ state.partner='demo'; state.pname='하루'; }
+  if(scr==='main'||scr==='main-empty'){ showMain(); if(scr!=='main-empty'){ $('#pstate').textContent='시연 화면 · 실제 위치 아님'; $('#pdot').className='dot off';
+      $('#locchip').textContent='합정역 부근 · 미리보기'; $('#locchip').classList.remove('hide'); 
+      $('#sharetitle').textContent='내 위치 공유 (시연)'; $('#sharesub').textContent='이 화면에서는 실제 위치를 보내지 않아요';
+      $('#shareSwitch').disabled=true;
+    } }
+  else if(scr==='pair'){ showMain(); showPane('#sheetPair','invite'); $('#inviteCode').textContent='AB12-CD34'; $('#inviteTimer').textContent='9:12'; openSheet('#sheetPair'); }
+  else if(scr==='enter'){ showMain(); showPane('#sheetPair','enter'); openSheet('#sheetPair'); }
+  else if(scr==='menu'){ showMain(); $('#mNameCur').textContent='하루'; openSheet('#sheetMenu'); }
+  else if(scr==='web'){ showMain(); $('#webCode').textContent='WB33-KK21'; $('#webAddr').textContent=location.origin+'/where-are-you/'; openSheet('#sheetWeb'); }
+  else if(scr==='delete'){ showMain(); dialog('내 정보 완전히 삭제','서버에서 내 위치·이름·짝꿍 연결·열람 기록을 모두 지워요. 되돌릴 수 없어요.','완전히 삭제',null,true); }
+  else if(scr==='celebrate'){ showMain(); celebrate('짝꿍과 연결됐어요!','이제 서로의 작은 지도가 보여요'); }
+}
+
+/* ===================== 시작 ===================== */
+function boot(){
+  if(PREVIEW){ preview(); return; }
+  if(!onboarded()){ $('#onboard').classList.remove('hide'); obShow(0); }
+  else { showMain(); refreshPartner(); loadAccess(); }
+}
+boot();
+/* 포그라운드 복귀 시 갱신 */
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&!PREVIEW&&onboarded()) WY.onResume(); });
+/* 짝꿍 연결되어 있으면 주기적으로 상태 반영 */
+setInterval(()=>{ if(!PREVIEW&&onboarded()&&!$('#sheetPair').classList.contains('on')) refreshPartner(); },15000);
+</script>
+</body>
+</html>
