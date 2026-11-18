@@ -1181,7 +1181,7 @@ function radio(groupEl, onPick){
   return pick;
 }
 const pickMode = radio(document.getElementById('modes'), v=>{ setMode(v); sigBtn.disabled=!(v==='bus'||v==='bike'); elT = v==='subway' ? .42 : VIEW_EL.tilt; });
-radio(document.getElementById('weathers'), v=>{ weather=v; applyTheme(); });
+const pickWeather = radio(document.getElementById('weathers'), v=>{ weather=v; applyTheme(); });
 const pickStyle = radio(stylesEl, v=>{ buildTheme(v); try{localStorage.setItem('diorama-style',v);}catch(e){} });
 sigBtn.addEventListener('click', ()=>{ sigPhase = sigPhase==='green'?'red':'green'; sigT=0; paintSignal(); });
 gpsBtn.addEventListener('click', ()=>{ gpsOn=!gpsOn; gpsBtn.setAttribute('aria-pressed',String(gpsOn)); gpsBtn.textContent = gpsOn ? 'GPS 보정 켜짐' : 'GPS 보정 꺼짐 (원본)';
@@ -1199,6 +1199,14 @@ let DEVICE = null; try{ DEVICE = localStorage.getItem('wy-device'); }catch(e){}
 /* 실제 위치 모드: 앱 안(앱이 인증 정보 전달) 또는 앱으로 연결해 둔 웹 브라우저(기기 토큰)일 때만. 링크만으로는 볼 수 없음 */
 const DEMO = /[?&]demo\b/.test(location.search);
 const REALC = !DEV && !DEMO && (BRIDGE || DEVICE) ? 'on' : null;
+/* Requests are accepted only from this page's same-origin demo app frame. */
+window.addEventListener('message', e=>{
+  if(!DEMO || e.origin!==location.origin || e.source!==window.parent) return;
+  const d=e.data;
+  if(!d || d.__wyDemo!==1) return;
+  if(d.type==='mode' && ['walk','run','bike','bus','subway','rest'].includes(d.value)) pickMode(d.value);
+  else if(d.type==='weather' && ['clear','rain','wind','snow'].includes(d.value)) pickWeather(d.value);
+});
 const SB_URL = 'https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY = 'sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
 const RT = {nopartner:false, name:'', act:'', sub:null, have:false, placed:false, x:0, z:0, gx:0, gz:0, tx:0, tz:1, speed:0, acc:2, at:0, off:false, err:false, lastPoll:-9, still:true, busy:false};
 
