@@ -64,6 +64,49 @@ async function runMain(browser,name,url,width,height){
   }finally{await context.close();}
 }
 
+
+async function runSolo(browser,name,url){
+  const context=await browser.newContext({
+    viewport:{width:360,height:800},deviceScaleFactor:1,isMobile:true,hasTouch:true,reducedMotion:'reduce'
+  });
+  let serverCalls=0;
+  await context.route(/supabase\.co/,route=>{serverCalls++;return route.abort('blockedbyclient')});
+  const page=await context.newPage();
+  const errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  try {
+    const res=await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
+    assert(res&&res.ok(),name+': failed to open');
+    await page.locator('#soloTools').waitFor({state:'visible',timeout:15000});
+    assert.equal(await page.locator('#shareSwitch').isDisabled(),true);
+    assert.match(await page.locator('#pstate').innerText(),/실제 위치 아님/);
+    const mapSrc=await page.locator('#mapframe').getAttribute('src');
+    assert(mapSrc&&mapSrc.includes('demo=1'),name+': missing DEMO flag');
+
+    const mapReady=()=> {
+      const d=document.querySelector('#mapframe')?.contentDocument;
+      return d?.querySelector('#modes button[data-v="bus"]')?.getAttribute('aria-checked')==='true'
+        && d?.querySelector('#msg')?.textContent!=='불러오는 중';
+    };
+    await page.waitForFunction(mapReady,null,{timeout:50000});
+
+    await page.locator('#soloTools [data-solo-mode="subway"]').click();
+    await page.waitForFunction(()=>{
+      const d=document.querySelector('#mapframe')?.contentDocument;
+      return d?.querySelector('#modes button[data-v="subway"]')?.getAttribute('aria-checked')==='true';
+    },null,{timeout:12000});
+    await page.locator('#soloTools [data-solo-weather="rain"]').click();
+    await page.waitForFunction(()=>{
+      const d=document.querySelector('#mapframe')?.contentDocument;
+      return d?.querySelector('#weathers button[data-v="rain"]')?.getAttribute('aria-checked')==='true';
+    },null,{timeout:12000});
+    await page.screenshot({path:path.join(OUT,name+'.png'),animations:'disabled'});
+    assert.equal(serverCalls,0,name+': simulation contacted realtime backend');
+    assert.deepEqual(errors,[],name+': unhandled browser errors');
+    console.log('PASS',name,'solo demo controls, no realtime server requests');
+  }finally {await context.close();}
+}
+
 (async()=>{
   checkInlineScripts('app.html');
   checkInlineScripts('index.html');
@@ -74,6 +117,8 @@ async function runMain(browser,name,url,width,height){
     await runMain(browser,'local-mobile-360',ORIGIN+'/app.html?preview=main',360,800);
     await runMain(browser,'local-mobile-412',ORIGIN+'/app.html?preview=main',412,915);
     await runMain(browser,'deployed-mobile',LIVE+'/app-design-preview.html?preview=main',360,800);
+    await runSolo(browser,'solo-local',ORIGIN+'/app.html?preview=main&solo=1');
+    await runSolo(browser,'solo-deployed',LIVE+'/app-design-preview.html?preview=main&solo=1');
     const context=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});
     const p=await context.newPage();
     await p.goto(ORIGIN+'/app.html?preview=main-empty',{waitUntil:'domcontentloaded'});
