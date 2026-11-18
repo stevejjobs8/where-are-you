@@ -827,7 +827,7 @@ function demoSend(type,value){
 }
 function soloPick(type,value){
   const selector=type==='mode'?'[data-solo-mode]':'[data-solo-weather]';
-  $('#soloTools '+selector).forEach(b=>b.setAttribute('aria-pressed',
+  $$('#soloTools '+selector).forEach(b=>b.setAttribute('aria-pressed',
     String(b.dataset[type==='mode'?'soloMode':'soloWeather']===value)));
   demoSelection[type]=value;
   const names={walk:'걷기',run:'달리기',bike:'자전거',bus:'버스',subway:'지하철',rest:'쉬기'};
@@ -835,9 +835,9 @@ function soloPick(type,value){
   demoSend(type,value);
 }
 if(SOLO){
-  $('#soloTools [data-solo-mode]').forEach(b=>b.addEventListener('click',
+  $$('#soloTools [data-solo-mode]').forEach(b=>b.addEventListener('click',
     ()=>soloPick('mode',b.dataset.soloMode)));
-  $('#soloTools [data-solo-weather]').forEach(b=>b.addEventListener('click',
+  $$('#soloTools [data-solo-weather]').forEach(b=>b.addEventListener('click',
     ()=>soloPick('weather',b.dataset.soloWeather)));
   $('#mapframe').addEventListener('load',()=>{
     demoSend('mode',demoSelection.mode); demoSend('weather',demoSelection.weather);
