@@ -1265,7 +1265,7 @@ async function pollReal(){
     RT.nopartner = !rows.length;
     if(!rows.length){ discardPartnerLocation(); RT.off = false; RT.err = false; return; }
     if(rows.length && rows[0].name) RT.name = rows[0].name;
-    if(rows[0].lat==null){ discardPartnerLocation(); RT.off = true; RT.err = false; return; }
+    if(rows[0].lat==null){ discardPartnerLocation(); RT.off = rows[0].sharing !== true; RT.err = false; return; }
     const q = rows[0], [x,z] = toLocal(q.lng, q.lat);
     RT.off = false; RT.err = false; RT.act = q.activity||''; RT.speed = q.speed||0; RT.acc = (q.accuracy||20)/10; RT.at = Date.parse(q.updated_at);
     const dead = RT.speed < .6 ? Math.max(2.0, RT.acc*.8) : .3;   // 멈춰 있으면 20m 안쪽 흔들림 무시
