@@ -116,6 +116,46 @@ async function runSolo(browser,name,url){
   }finally {await context.close();}
 }
 
+
+async function runMockLocationState(browser,name,sharing,minutesOld,hasCoordinates){
+  const context=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
+  await context.addInitScript(()=>{
+    window.AndroidBridge={auth:()=>JSON.stringify({view:'test-view',write:'test-write'})};
+  });
+  let mockedQueries=0, unexpectedCalls=0;
+  await context.route(/supabase\.co/,route=>{unexpectedCalls++;return route.abort('blockedbyclient');});
+  await context.route('**/rest/v1/rpc/get_partner_location',route=>{
+    mockedQueries++;
+    const row={sharing,lat:hasCoordinates?37.55:null,lng:hasCoordinates?126.92:null,
+      name:'테스트 짝꿍',accuracy:15,speed:0,activity:'still',
+      updated_at:new Date(Date.now()-minutesOld*60000).toISOString()};
+    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([row])});
+  });
+  const page=await context.newPage();
+  const errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  try {
+    const res=await page.goto(ORIGIN+'/index.html?app=1',{waitUntil:'domcontentloaded',timeout:45000});
+    assert(res&&res.ok(),name+': map page failed to open');
+    await page.waitForFunction(()=>{
+      return document.querySelector('#scene-name')?.textContent==='테스트 짝꿍의 지금';
+    },null,{timeout:20000});
+    await page.waitForFunction(state=>{
+      const text=document.querySelector('#scene-status-text')?.textContent||'';
+      return state==='paused' ? text==='위치 공유 중지'
+        : state==='no-fix' ? text==='위치 기다리는 중'
+        : state==='stale' ? text.includes('마지막 위치')
+        : text.includes('확인된 위치');
+    },name,{timeout:20000});
+    const hidden=await page.locator('#stage').evaluate(el=>el.classList.contains('location-unavailable'));
+    assert.equal(hidden,name!=='fresh',name+': incorrect map visibility');
+    assert(mockedQueries>0,name+': real location request was never exercised');
+    assert.equal(unexpectedCalls,0,name+': unexpected backend access');
+    assert.deepEqual(errors,[],name+': unhandled JavaScript errors');
+    console.log('PASS',name,'mock partner location and UI status');
+  } finally {await context.close();}
+}
+
 (async()=>{
   checkInlineScripts('app.html');
   checkInlineScripts('index.html');
@@ -128,6 +168,10 @@ async function runSolo(browser,name,url){
     await runMain(browser,'deployed-mobile',LIVE+'/app-design-preview.html?preview=main',360,800);
     await runSolo(browser,'solo-local',ORIGIN+'/app.html?preview=main&solo=1');
     await runSolo(browser,'solo-deployed',LIVE+'/app-design-preview.html?preview=main&solo=1');
+    await runMockLocationState(browser,'no-fix',true,0,false);
+    await runMockLocationState(browser,'paused',false,0,false);
+    await runMockLocationState(browser,'stale',true,10,true);
+    await runMockLocationState(browser,'fresh',true,0,true);
     const context=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});
     const p=await context.newPage();
     await p.goto(ORIGIN+'/app.html?preview=main-empty',{waitUntil:'domcontentloaded'});
