@@ -265,6 +265,24 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
   .bottom{left:12px;right:12px}
 }
 @media(prefers-reduced-motion:reduce){.statuschip,.accesschip{animation:none}}
+
+/* One-phone QA playground — shown only with ?preview=main&solo=1 */
+.solo-tools{position:absolute;left:18px;right:18px;bottom:calc(110px + var(--safe-b));z-index:4;
+  background:color-mix(in srgb,var(--card) 96%,transparent);border:1px solid var(--line);
+  border-radius:17px;padding:10px 11px 11px;box-shadow:0 6px 20px rgba(44,49,80,.075)}
+.solo-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 7px;font-size:11px;color:var(--muted)}
+.solo-top strong{font-family:'Jua';font-weight:400;font-size:14px;color:var(--ink)}
+.solo-row{display:flex;overflow-x:auto;gap:5px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.solo-row::-webkit-scrollbar{display:none}
+.solo-row button{flex:0 0 auto;min-width:46px;min-height:35px;padding:6px 9px;color:var(--ink);
+  background:var(--bg);border-radius:9px;font-size:12px}
+.solo-row button[aria-pressed="true"]{background:var(--pink);color:#fff}
+.solo-bottom{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px}
+.solo-weather{display:flex;gap:5px;align-items:center;font-size:11px;color:var(--muted)}
+.solo-weather button{padding:5px 8px;border:1px solid var(--line2);border-radius:9px;font-size:11px;color:var(--ink)}
+.solo-weather button[aria-pressed="true"]{border-color:var(--pink);background:var(--pink-bg);color:var(--pink-d)}
+.solo-real{font-size:11px;text-decoration:underline;color:var(--muted);padding:4px}
+@media(max-width:360px){.solo-tools{left:12px;right:12px}.solo-row button{min-width:43px;padding:6px 8px}}
 </style>
 </head>
 <body>
@@ -328,6 +346,26 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
       <button class="switch" id="shareSwitch" role="switch" aria-checked="false" aria-label="위치 공유"><span class="track"></span><span class="knob"></span></button>
     </div>
   </div>
+  <!-- 한 기기에서만 사용하는 시연 조작판. 실제 위치 공유와 분리. -->
+  <aside class="solo-tools hide" id="soloTools" aria-label="혼자 체험하기">
+    <div class="solo-top"><strong>혼자 체험하기</strong><span>가상 이동 · 실제 위치 전송 없음</span></div>
+    <div class="solo-row" aria-label="이동 방식">
+      <button data-solo-mode="walk" aria-pressed="false">걷기</button>
+      <button data-solo-mode="run" aria-pressed="false">달리기</button>
+      <button data-solo-mode="bike" aria-pressed="false">자전거</button>
+      <button data-solo-mode="bus" aria-pressed="true">버스</button>
+      <button data-solo-mode="subway" aria-pressed="false">지하철</button>
+      <button data-solo-mode="rest" aria-pressed="false">쉬기</button>
+    </div>
+    <div class="solo-bottom">
+      <div class="solo-weather" aria-label="날씨"><span>날씨</span>
+        <button data-solo-weather="clear" aria-pressed="true">맑음</button>
+        <button data-solo-weather="rain" aria-pressed="false">비</button>
+        <button data-solo-weather="snow" aria-pressed="false">눈</button>
+      </div>
+      <button class="solo-real" id="soloReal" title="실제 앱처럼 연결 절차를 테스트하기">연결 시험</button>
+    </div>
+  </aside>
 </div>
 
 <!-- 온보딩 -->
@@ -480,6 +518,7 @@ const SB_URL='https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY='sb_publishable_
 const AB = window.AndroidBridge || null;
 const qp = new URLSearchParams(location.search);
 const PREVIEW = qp.get('preview');           // 스크린샷/대체용
+const SOLO = PREVIEW==='main' && qp.get('solo')==='1';
 if(PREVIEW) document.body.classList.add('preview');
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 
@@ -520,6 +559,7 @@ window.WY={
 
 /* ===================== Supabase RPC ===================== */
 async function rpc(fn,body){
+  if(PREVIEW) throw new Error('시연 화면에서는 실제 계정·위치 서버에 연결하지 않아요');
   const r=await fetch(SB_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'apikey':SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body||{})});
   const tx=await r.text();
   if(!r.ok) throw new Error(tx||('HTTP '+r.status));
@@ -762,7 +802,8 @@ function preview(){
   if(scr.indexOf('onboard')===0){ $('#onboard').classList.remove('hide'); obShow(+(qp.get('step')||0)); return; }
   // main 계열
   if(scr!=='main-empty'){ state.partner='demo'; state.pname='하루'; }
-  if(scr==='main'||scr==='main-empty'){ showMain(); if(scr!=='main-empty'){ $('#pstate').textContent='시연 화면 · 실제 위치 아님'; $('#pdot').className='dot off';
+  if(scr==='main'||scr==='main-empty'){ showMain(); if(scr!=='main-empty'){
+      if(SOLO) $('#soloTools').classList.remove('hide'); $('#pstate').textContent='시연 화면 · 실제 위치 아님'; $('#pdot').className='dot off';
       $('#locchip').textContent='합정역 부근 · 미리보기'; $('#locchip').classList.remove('hide'); 
       $('#sharetitle').textContent='내 위치 공유 (시연)'; $('#sharesub').textContent='이 화면에서는 실제 위치를 보내지 않아요';
       $('#shareSwitch').disabled=true;
@@ -773,6 +814,34 @@ function preview(){
   else if(scr==='web'){ showMain(); $('#webCode').textContent='WB33-KK21'; $('#webAddr').textContent=location.origin+'/where-are-you/'; openSheet('#sheetWeb'); }
   else if(scr==='delete'){ showMain(); dialog('내 정보 완전히 삭제','서버에서 내 위치·이름·짝꿍 연결·열람 기록을 모두 지워요. 되돌릴 수 없어요.','완전히 삭제',null,true); }
   else if(scr==='celebrate'){ showMain(); celebrate('짝꿍과 연결됐어요!','이제 서로의 작은 지도가 보여요'); }
+}
+
+
+/* A dedicated demo channel controls only simulated map movement/weather. */
+const demoSelection={mode:'bus',weather:'clear'};
+function demoSend(type,value){
+  if(!SOLO) return;
+  const frame=$('#mapframe');
+  if(frame.contentWindow) frame.contentWindow.postMessage({__wyDemo:1,type,value},location.origin);
+}
+function soloPick(type,value){
+  const selector=type==='mode'?'[data-solo-mode]':'[data-solo-weather]';
+  $('#soloTools '+selector).forEach(b=>b.setAttribute('aria-pressed',
+    String(b.dataset[type==='mode'?'soloMode':'soloWeather']===value)));
+  demoSelection[type]=value;
+  const names={walk:'걷기',run:'달리기',bike:'자전거',bus:'버스',subway:'지하철',rest:'쉬기'};
+  $('#pstate').textContent=(names[demoSelection.mode]||'이동')+' 체험 중 · 실제 위치 아님';
+  demoSend(type,value);
+}
+if(SOLO){
+  $('#soloTools [data-solo-mode]').forEach(b=>b.addEventListener('click',
+    ()=>soloPick('mode',b.dataset.soloMode)));
+  $('#soloTools [data-solo-weather]').forEach(b=>b.addEventListener('click',
+    ()=>soloPick('weather',b.dataset.soloWeather)));
+  $('#mapframe').addEventListener('load',()=>{
+    demoSend('mode',demoSelection.mode); demoSend('weather',demoSelection.weather);
+  });
+  $('#soloReal').addEventListener('click',()=>{location.href='app-design-preview.html';});
 }
 
 /* ===================== 시작 ===================== */
