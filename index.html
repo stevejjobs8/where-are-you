@@ -1122,8 +1122,8 @@ function gpsStep(dt, vel, underground){
 }
 /* ================= 카메라 ================= */
 const ZMIN = .12;   // 작을수록 더 가까이 확대
-let dist=80, zoom=1, az=1.2, el=.62, azT=az, elT=el;
-const VIEW_EL = {top:1.45, tilt:.62, side:.2};
+let dist=80, zoom=document.body.classList.contains('app') ? .83 : 1, az=1.2, el=.62, azT=az, elT=el;
+const VIEW_EL = {top:1.45, tilt:document.body.classList.contains('app') ? .72 : .62, side:.2};
 const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 function resize(){
