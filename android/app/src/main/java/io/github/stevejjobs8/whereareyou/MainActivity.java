@@ -64,7 +64,7 @@ public class MainActivity extends Activity {
         });
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");
         setContentView(web);
-        web.loadUrl(BASE + "app-design-preview.html");
+        web.loadUrl(BASE + "app-design-preview.html?preview=main&solo=1");
     }
 
     @Override protected void onResume() {
