@@ -614,11 +614,15 @@ setInterval(()=>{ if(Native.isSharing()){ const s=Native.status(); if(s) setShar
 
 /* 지도(iframe)가 보내는 짝꿍 실시간 상태를 상단 칩에 반영 */
 window.addEventListener('message',e=>{
-  const d=e.data; if(PREVIEW || !d||d.__wy!==1||!state.partner) return;
+  const d=e.data;
+  if(PREVIEW || e.origin!==location.origin || e.source!==$('#mapframe').contentWindow ||
+     !d || d.__wy!==1 || !state.partner) return;
   if(d.name){ state.pname=d.name; LS.set('pname',d.name); $('#pname').textContent=d.name; }
-  const stuck=d.off||d.nopartner||!d.have||d.err;
+  const stuck=d.off||d.nopartner||!d.have||d.err||d.stale;
   $('#pdot').className='dot'+(stuck?' off':' pulse');
-  $('#pstate').textContent=(d.b&&!stuck)?d.b:d.a;
+  $('#pstate').textContent=d.stale ? '마지막 위치가 오래되어 지도를 숨겼어요'
+    : d.estimated ? '지하철 이동 경로를 추정하고 있어요'
+    : (d.b&&!stuck)?d.b:d.a;
 });
 
 /* ===================== 열람 알림 ===================== */
