@@ -77,7 +77,16 @@ async function runSolo(browser,name,url){
   try {
     const res=await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
     assert(res&&res.ok(),name+': failed to open');
-    await page.locator('#soloTools').waitFor({state:'visible',timeout:15000});
+    try{ await page.locator('#soloTools').waitFor({state:'visible',timeout:15000}); }
+    catch(err){
+      const diagnosis=await page.evaluate(()=>({
+        solo:typeof SOLO==='undefined'?'unset':SOLO,
+        preview:typeof PREVIEW==='undefined'?'unset':PREVIEW,
+        panel:document.querySelector('#soloTools')?.className,
+        overlay:document.querySelector('#overlay')?.className
+      })).catch(e=>({error:e.message}));
+      throw new Error(name+' solo panel missing: '+JSON.stringify(diagnosis)+' errors: '+errors.join(' | '));
+    }
     assert.equal(await page.locator('#shareSwitch').isDisabled(),true);
     assert.match(await page.locator('#pstate').innerText(),/실제 위치 아님/);
     const mapSrc=await page.locator('#mapframe').getAttribute('src');
