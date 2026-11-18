@@ -477,6 +477,7 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
     <button class="mi" id="mWebRevoke"><span class="ml">웹 연결 모두 끊기</span><span class="chev">›</span></button>
     <button class="mi" id="mName"><span class="ml">내 이름</span><span class="val" id="mNameCur">하루</span></button>
     <button class="mi" id="mBattery"><span class="ml">배터리 설정</span><span class="chev">›</span></button>
+    <button class="mi hide" id="mSolo"><span class="ml">혼자 체험하기</span><span class="chev">›</span></button>
     <button class="mi" id="mTerms"><span class="ml">약관·개인정보처리방침</span><span class="chev">›</span></button>
     <div class="mi static" style="flex-direction:column;align-items:stretch;gap:11px;padding:14px 0 6px">
       <span class="ml">화면 테마</span>
@@ -841,7 +842,20 @@ if(SOLO){
   $('#mapframe').addEventListener('load',()=>{
     demoSend('mode',demoSelection.mode); demoSend('weather',demoSelection.weather);
   });
-  $('#soloReal').addEventListener('click',()=>{location.href='app-design-preview.html';});
+  $('#soloReal').addEventListener('click',()=>{
+    if(AB && AB.enterConnectionMode) AB.enterConnectionMode();
+    else location.href='app-design-preview.html';
+  });
+}
+
+/* Demo app only: returning to solo mode stops the Android foreground location service. */
+if(AB && AB.enterSoloMode && !SOLO){
+  $('#mSolo').classList.remove('hide');
+  $('#mSolo').onclick=()=>{
+    closeSheets();
+    dialog('혼자 체험하기','실제 위치 공유를 중지하고 가상 이동 모드로 돌아가요.','전환',
+      ()=>AB.enterSoloMode(),false);
+  };
 }
 
 /* ===================== 시작 ===================== */
