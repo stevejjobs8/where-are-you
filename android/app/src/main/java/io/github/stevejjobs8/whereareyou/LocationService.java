@@ -122,6 +122,8 @@ public class LocationService extends Service {
         String view = sp.getString("view_code", null), write = sp.getString("write_key", null);
         if (view == null || write == null) return;
         io.execute(() -> {
+            // A stop request can arrive while uploads are queued. Never send an old position then.
+            if (sharing && !getSharedPreferences("share", MODE_PRIVATE).getBoolean("on", false)) return;
             try {
                 JSONObject o = new JSONObject();
                 o.put("p_view_code", view);
