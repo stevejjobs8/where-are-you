@@ -1189,7 +1189,7 @@ gpsBtn.addEventListener('click', ()=>{ gpsOn=!gpsOn; gpsBtn.setAttribute('aria-p
 let saved='pastel'; try{ const s=localStorage.getItem('diorama-style'); if(s&&THEMES[s]) saved=s; }catch(e){}
 pickStyle(saved); pickMode('bus');
 let lastText=''; const say=(a,b,c)=>{ const k=a+'|'+b+'|'+c; if(k===lastText) return; lastText=k; msg.textContent=a; sub.textContent=b; wxEl.textContent=c; wxEl.hidden=!c;
-  try{ if(window.parent&&window.parent!==window) window.parent.postMessage({__wy:1,a,b,c,off:RT.off,nopartner:RT.nopartner,err:RT.err,have:RT.have,name:RT.name,mode},'*'); }catch(e){} };
+  try{ if(window.parent&&window.parent!==window) window.parent.postMessage({__wy:1,a,b,c,off:RT.off,nopartner:RT.nopartner,err:RT.err,have:RT.have,name:RT.name,mode,stale:!!(RT.have&&RT.at&&Date.now()-RT.at>=300000),estimated:!!(REALC&&mode==='subway'&&RT.sub)},'*'); }catch(e){} };
 const seat = (parent, x,y,z,s) => { if(doll.parent!==parent) parent.add(doll); doll.position.set(x,y,z); doll.scale.setScalar(s); };
 
 /* ================= 실제 위치 모드: 주소에 ?c=보는코드 가 있으면 Supabase에서 진짜 위치를 받아옴 ================= */
