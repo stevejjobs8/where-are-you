@@ -248,8 +248,21 @@ async function runRemoteDisconnect(browser) {
   const page=await context.newPage();
   try{
     await page.goto(ORIGIN+'/app.html',{waitUntil:'domcontentloaded',timeout:45000});
-    await page.waitForFunction(()=>localStorage.getItem('wy-partner')===null
-      && !document.querySelector('#empty')?.classList.contains('hide'),null,{timeout:15000});
+    try{
+      await page.waitForFunction(()=>localStorage.getItem('wy-partner')===null
+        && !document.querySelector('#empty')?.classList.contains('hide'),null,{timeout:15000});
+    }catch(e){
+      const details=await page.evaluate(()=>({
+        partner:localStorage.getItem('wy-partner'),
+        savedCreds:!!localStorage.getItem('wy-creds'),
+        hasOnboarded:localStorage.getItem('wy-onboarded'),
+        statePartner:typeof state==='undefined'?'missing':state.partner,
+        overlay:document.querySelector('#overlay')?.className,
+        empty:document.querySelector('#empty')?.className,
+        toast:document.querySelector('#toast')?.textContent
+      }));
+      throw new Error('remote unlink UI state not updated: '+JSON.stringify(details)+' '+e.message);
+    }
     assert.equal(await page.locator('#statuschip').isVisible(),false);
     console.log('PASS server-side partner unlink clears cached relationship');
   }finally{await context.close();}
