@@ -473,6 +473,7 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
   <div class="grab"></div>
   <h2 style="margin-bottom:10px">더보기</h2>
   <nav class="menu">
+    <button class="mi" id="mPair"><span class="ml">짝꿍 관리</span><span class="chev">›</span></button>
     <button class="mi" id="mWebLink"><span class="ml">웹으로 보기 연결</span><span class="chev">›</span></button>
     <button class="mi" id="mWebRevoke"><span class="ml">웹 연결 모두 끊기</span><span class="chev">›</span></button>
     <button class="mi" id="mName"><span class="ml">내 이름</span><span class="val" id="mNameCur">하루</span></button>
@@ -695,6 +696,7 @@ function openPair(){
   openSheet('#sheetPair');
 }
 $('#menuBtn').onclick=()=>openSheet('#sheetMenu');
+$('#mPair').onclick=()=>{ closeSheets(); openPair(); };
 $('#emptyPair').onclick=openPair;
 $('#pMake').onclick=makeInvite; $('#pEnter').onclick=()=>showPane('#sheetPair','enter');
 $('#inviteToEnter').onclick=()=>showPane('#sheetPair','enter');
