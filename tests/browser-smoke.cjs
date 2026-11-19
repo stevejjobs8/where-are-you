@@ -161,6 +161,9 @@ async function runMockLocationState(browser,name,sharing,minutesOld,hasCoordinat
 async function runAccountLifecycle(browser) {
   const context=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});
   await context.addInitScript(()=>{
+    // Only seed the top-level app once; iframe navigations must not restore cleared data.
+    if(window.top!==window || sessionStorage.getItem('wy-test-seeded')) return;
+    sessionStorage.setItem('wy-test-seeded','1');
     localStorage.setItem('wy-onboarded','1');
     localStorage.setItem('wy-consent','1');
     localStorage.setItem('wy-name','테스터');
@@ -234,6 +237,9 @@ async function runAccountLifecycle(browser) {
 async function runRemoteDisconnect(browser) {
   const context=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});
   await context.addInitScript(()=>{
+    // Only seed the top-level app once; iframe navigations must not restore cleared data.
+    if(window.top!==window || sessionStorage.getItem('wy-test-seeded')) return;
+    sessionStorage.setItem('wy-test-seeded','1');
     localStorage.setItem('wy-onboarded','1');
     localStorage.setItem('wy-name','테스터');
     localStorage.setItem('wy-partner','cached-partner');
