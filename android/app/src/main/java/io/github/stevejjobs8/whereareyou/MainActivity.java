@@ -100,6 +100,10 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void setCreds(String view, String write) {
             sp.edit().putString("view_code", view).putString("write_key", write).apply();
         }
+        /** Called only after a successful server account deletion. */
+        @JavascriptInterface public void clearCreds() {
+            sp.edit().remove("view_code").remove("write_key").putBoolean("on", false).commit();
+        }
         @JavascriptInterface public boolean isSharing() { return sp.getBoolean("on", false); }
 
         /** Test APK only: keep the user's chosen mode across activity restarts. */
