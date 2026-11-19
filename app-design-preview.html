@@ -532,6 +532,7 @@ const Native={
   creds(){ try{ if(AB&&AB.auth){const a=JSON.parse(AB.auth()); if(a&&a.view) return {view:a.view,write:a.write};} }catch(e){}
     try{const s=LS.get('creds'); if(s) return JSON.parse(s);}catch(e){} return null; },
   saveCreds(v,w){ if(AB&&AB.setCreds){try{AB.setCreds(v,w);}catch(e){}} else LS.set('creds',JSON.stringify({view:v,write:w})); },
+  clearCreds(){ if(AB&&AB.clearCreds) AB.clearCreds(); LS.del('creds'); },
   isSharing(){ try{ if(AB&&AB.isSharing) return String(AB.isSharing())==='true'; }catch(e){} return LS.get('sharing')==='1'; },
   startShare(){ if(AB&&AB.startShare){try{AB.startShare();return;}catch(e){}} LS.set('sharing','1'); WY.onShare(true); },
   stopShare(){ if(AB&&AB.stopShare){try{AB.stopShare();return;}catch(e){}} LS.set('sharing','0'); WY.onShare(false); },
@@ -622,10 +623,18 @@ async function refreshPartner(){
       const o=rows[0]; const was=state.partner;
       state.partner=o.partner; state.pname=o.partner_name||null;
       LS.set('partner',state.partner); state.pname?LS.set('pname',state.pname):LS.del('pname');
-      if(!was) showMain(); else paintPartner();
+      if(!was || was!==state.partner){
+        $('#mapframe').src='about:blank';
+        showMain();
+      } else paintPartner();
       return state.partner;
-    } else if(!Array.isArray(rows)||!rows.length||!rows[0].partner){
-      // 서버상 짝꿍 없음 (내가 기록만 갖고 있을 수 있음) — 유지
+    } else if(Array.isArray(rows)&&rows.length&&!rows[0].partner&&state.partner){
+      // The partner disconnected on the server; discard the cached relationship.
+      state.partner=null; state.pname=null;
+      LS.del('partner'); LS.del('pname');
+      $('#mapframe').src='about:blank';
+      closeSheets(); showMain();
+      toast('짝꿍 연결이 해제됐어요');
     }
   }catch(e){}
   return state.partner;
@@ -723,7 +732,8 @@ $('#enterGo').onclick=async()=>{
     err.textContent=/pair code|device/.test(m)?'이건 웹 연결 코드예요':/invite expired|not found/.test(m)?'코드가 틀렸거나 10분이 지났어요':/own code/.test(m)?'내가 만든 코드는 넣을 수 없어요':'연결에 실패했어요'; }
 };
 async function doUnpair(){
-  try{ await rpc('unpair',authBody()); }catch(e){}
+  try{ await rpc('unpair',authBody()); }
+  catch(e){ toast('연결 해제에 실패했어요. 인터넷 연결을 확인해 주세요'); return; }
   state.partner=null; state.pname=null; LS.del('partner'); LS.del('pname');
   closeSheets(); $('#mapframe').src='about:blank'; showMain(); toast('짝꿍 연결을 끊었어요');
 }
@@ -758,12 +768,20 @@ $('#mBattery').onclick=()=>{ closeSheets(); Native.openBattery(); };
 $('#mTerms').onclick=()=>Native.openUrl((location.origin+location.pathname).replace(/app\.html$/,'')+'terms.html');
 $('#mDelete').onclick=()=>dialog('내 정보 완전히 삭제','서버에서 내 위치·이름·짝꿍 연결·열람 기록을 모두 지워요. 되돌릴 수 없어요.','완전히 삭제',doDelete,true);
 async function doDelete(){
+  // First stop uploading coordinates. Never discard account keys until server confirms deletion.
   Native.stopShare();
-  try{ if(creds()) await rpc('delete_me',authBody()); }catch(e){}
-  ['creds','name','partner','pname','consent','onboarded','sharing'].forEach(LS.del);
+  try{
+    const c=creds();
+    if(c && c.view) await rpc('delete_me',authBody());
+  }catch(e){
+    toast('서버 삭제에 실패했어요. 인터넷 연결을 확인하고 다시 시도해 주세요');
+    return;
+  }
+  Native.clearCreds();
+  ['name','partner','pname','consent','consent_at','onboarded','sharing'].forEach(LS.del);
   state.partner=null; state.pname=null; state.name='';
-  closeSheets(); $('#mapframe').src='about:blank'; toast('내 정보를 모두 지웠어요');
-  setTimeout(()=>{ location.href='app.html'; },900);
+  closeSheets(); $('#mapframe').src='about:blank'; toast('내 정보 삭제가 완료됐어요');
+  setTimeout(()=>{ location.href='app-design-preview.html'; },900);
 }
 
 /* ===================== 테마 ===================== */
