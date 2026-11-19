@@ -1,0 +1,41 @@
+name: Design Preview Browser Smoke
+
+on:
+  push:
+    branches:
+      - design/diorama-first-main-screen
+    paths:
+      - 'app.html'
+      - 'index.html'
+      - 'tests/**'
+      - '.github/workflows/preview-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Start local preview server
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 > /tmp/wy-preview-server.log 2>&1 &
+          echo $! > /tmp/wy-preview-server.pid
+      - name: Run mobile and privacy smoke checks
+        run: node tests/browser-smoke.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: design-preview-browser-screenshots
+          path: artifacts/*.png
+          if-no-files-found: warn

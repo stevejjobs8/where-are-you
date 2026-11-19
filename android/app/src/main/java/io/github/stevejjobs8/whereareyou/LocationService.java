@@ -15,6 +15,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import com.google.android.gms.location.ActivityRecognition;
 
@@ -33,15 +34,22 @@ public class LocationService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private volatile Location best;        // 가장 최근 위치
-    private volatile Location good;        // 정확도 60m 이내의 마지막 위치 (지하에선 이걸 유지)
+    private volatile Location good;        // 정확도 60m 이내의 최근 위치
+    private long lastPublishedFixMs = -1;
+    private boolean missingLocationPublished = false;
     private PendingIntent arIntent;
+
+    private static long elapsedFixMs(Location l) {
+        return l == null ? 0L : l.getElapsedRealtimeNanos() / 1_000_000L;
+    }
 
     private final LocationListener listener = new LocationListener() {
         @Override public void onLocationChanged(Location l) {
             Location b = best;
-            // 더 최근이거나 더 정확한 쪽을 씀
-            if (b == null || l.getTime() >= b.getTime()) best = l;
-            if (l.hasAccuracy() && l.getAccuracy() <= 60) good = l;
+            if (b == null || elapsedFixMs(l) >= elapsedFixMs(b)) best = l;
+            Location g = good;
+            if (l.hasAccuracy() && l.getAccuracy() <= 60
+                    && (g == null || elapsedFixMs(l) >= elapsedFixMs(g))) good = l;
         }
         @Override public void onProviderEnabled(String p) {}
         @Override public void onProviderDisabled(String p) {}
@@ -50,8 +58,23 @@ public class LocationService extends Service {
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
-            Location l = good != null ? good : best;
-            if (l != null) push(l, true);
+            long nowMs = SystemClock.elapsedRealtime();
+            Location g = good, b = best;
+            long gMs = elapsedFixMs(g), bMs = elapsedFixMs(b);
+            Location l = LocationFreshness.preferGood(nowMs, gMs, bMs) ? g
+                    : LocationFreshness.isFresh(nowMs, bMs) ? b : null;
+            if (l != null) {
+                long fixMs = elapsedFixMs(l);
+                if (LocationFreshness.isNewFix(fixMs, lastPublishedFixMs)) {
+                    lastPublishedFixMs = fixMs;
+                    missingLocationPublished = false;
+                    push(l, true);
+                }
+            } else if (!missingLocationPublished) {
+                // GPS has stopped: remove the old position, but keep the user's sharing choice.
+                missingLocationPublished = true;
+                push(null, true);
+            }
             handler.postDelayed(this, INTERVAL_MS);
         }
     };
@@ -99,6 +122,8 @@ public class LocationService extends Service {
         String view = sp.getString("view_code", null), write = sp.getString("write_key", null);
         if (view == null || write == null) return;
         io.execute(() -> {
+            // A stop request can arrive while uploads are queued. Never send an old position then.
+            if (sharing && !getSharedPreferences("share", MODE_PRIVATE).getBoolean("on", false)) return;
             try {
                 JSONObject o = new JSONObject();
                 o.put("p_view_code", view);
@@ -111,7 +136,9 @@ public class LocationService extends Service {
                 o.put("p_activity", sharing ? currentActivity() : JSONObject.NULL);
                 o.put("p_sharing", sharing);
                 Supa.rpc("push_location", o.toString());
-                lastStatus = sharing ? ("보냄 (정확도 약 " + Math.round(l.getAccuracy()) + "m, 상태: " + currentActivity() + ")") : "공유를 껐어요";
+                lastStatus = !sharing ? "공유를 껐어요"
+                        : l == null ? "새로운 GPS 위치를 기다리는 중이에요"
+                        : ("보냄 (정확도 약 " + Math.round(l.getAccuracy()) + "m, 상태: " + currentActivity() + ")");
             } catch (Exception e) {
                 lastStatus = "전송 실패: " + e.getMessage();
             }
@@ -123,7 +150,8 @@ public class LocationService extends Service {
         long now = System.currentTimeMillis();
         String a = ActivityReceiver.activity;
         Location g = good;
-        long gpsAge = g == null ? Long.MAX_VALUE : now - g.getTime();
+        long gpsAge = g == null ? Long.MAX_VALUE
+                : Math.max(0L, SystemClock.elapsedRealtime() - elapsedFixMs(g));
         boolean recentVehicle = now - ActivityReceiver.lastVehicleAt < 5 * 60_000;
         if (gpsAge > 40_000 && recentVehicle && !a.equals("walk") && !a.equals("run")) return "subway";
         return a;

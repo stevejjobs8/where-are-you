@@ -64,7 +64,15 @@ public class MainActivity extends Activity {
         });
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");
         setContentView(web);
-        web.loadUrl(BASE + "app.html");
+        // Solo is the default for a new test install. A previously chosen live test remains live.
+        boolean solo = sp.getBoolean("preview_solo", true);
+        if (solo && sp.getBoolean("on", false)) {
+            stopService(new Intent(this, LocationService.class));
+            sp.edit().putBoolean("on", false).apply();
+        }
+        web.loadUrl(BASE + (solo
+                ? "app-design-preview.html?preview=main&solo=1"
+                : "app-design-preview.html"));
     }
 
     @Override protected void onResume() {
@@ -92,7 +100,26 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void setCreds(String view, String write) {
             sp.edit().putString("view_code", view).putString("write_key", write).apply();
         }
+        /** Called only after a successful server account deletion. */
+        @JavascriptInterface public void clearCreds() {
+            sp.edit().remove("view_code").remove("write_key").putBoolean("on", false).commit();
+        }
         @JavascriptInterface public boolean isSharing() { return sp.getBoolean("on", false); }
+
+        /** Test APK only: keep the user's chosen mode across activity restarts. */
+        @JavascriptInterface public void enterConnectionMode() {
+            runOnUiThread(() -> {
+                sp.edit().putBoolean("preview_solo", false).apply();
+                web.loadUrl(BASE + "app-design-preview.html");
+            });
+        }
+        @JavascriptInterface public void enterSoloMode() {
+            runOnUiThread(() -> {
+                stopService(new Intent(MainActivity.this, LocationService.class));
+                sp.edit().putBoolean("on", false).putBoolean("preview_solo", true).apply();
+                web.loadUrl(BASE + "app-design-preview.html?preview=main&solo=1");
+            });
+        }
         @JavascriptInterface public String shareStatus() { return LocationService.lastStatus; }
 
         @JavascriptInterface public void startShare() { runOnUiThread(() -> beginShare()); }
