@@ -156,6 +156,105 @@ async function runMockLocationState(browser,name,sharing,minutesOld,hasCoordinat
   } finally {await context.close();}
 }
 
+
+/* Account relationship and deletion tests use a fake RPC server; no real user data. */
+async function runAccountLifecycle(browser) {
+  const context=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});
+  await context.addInitScript(()=>{
+    localStorage.setItem('wy-onboarded','1');
+    localStorage.setItem('wy-consent','1');
+    localStorage.setItem('wy-name','테스터');
+    localStorage.setItem('wy-partner','partner-test');
+    localStorage.setItem('wy-pname','하루');
+    localStorage.setItem('wy-creds',JSON.stringify({view:'test-owner',write:'test-secret'}));
+  });
+  let unpairAllowed=false,deleteAllowed=false,linked=true,unpairCalls=0,deleteCalls=0;
+  const fulfill=(route,data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
+  await context.route(/supabase\.co/,route=>route.abort('blockedbyclient'));
+  await context.route('**/rest/v1/rpc/get_partner',route=>
+    fulfill(route,[{partner:linked?'partner-test':null,partner_name:linked?'하루':null}]));
+  await context.route('**/rest/v1/rpc/get_partner_location',route=>
+    fulfill(route,[{lat:null,lng:null,sharing:false,name:'하루',updated_at:new Date().toISOString()}]));
+  await context.route('**/rest/v1/rpc/my_access_summary',route=>fulfill(route,[]));
+  await context.route('**/rest/v1/rpc/unpair',route=>{
+    unpairCalls++;
+    if(!unpairAllowed)return fulfill(route,{error:'temporary network failure'},503);
+    linked=false;
+    return fulfill(route,null);
+  });
+  await context.route('**/rest/v1/rpc/delete_me',route=>{
+    deleteCalls++;
+    if(!deleteAllowed)return fulfill(route,{error:'temporary network failure'},503);
+    return fulfill(route,null);
+  });
+  const page=await context.newPage();
+  const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  const openMenu=async()=>{await page.locator('#menuBtn').click();await page.locator('#sheetMenu').waitFor({state:'visible'});};
+  try{
+    await page.goto(ORIGIN+'/app.html',{waitUntil:'domcontentloaded',timeout:45000});
+    await page.locator('#statuschip').waitFor({state:'visible',timeout:15000});
+    await openMenu();
+    await page.locator('#mPair').click();
+    await page.locator('#pUnpair').click();
+    await page.locator('#dlgYes').click();
+    await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('연결 해제에 실패'));
+    assert.equal(await page.evaluate(()=>localStorage.getItem('wy-partner')),'partner-test',
+      'Failed server unpair must preserve linked account');
+    assert.equal(unpairCalls,1);
+
+    unpairAllowed=true;
+    await page.locator('#pUnpair').click();
+    await page.locator('#dlgYes').click();
+    await page.waitForFunction(()=>document.querySelector('#empty')&&!document.querySelector('#empty').classList.contains('hide'));
+    assert.equal(await page.evaluate(()=>localStorage.getItem('wy-partner')),null);
+    assert.equal(unpairCalls,2);
+    console.log('PASS unpair failure retains link; successful unpair clears link');
+
+    await openMenu();
+    await page.locator('#mDelete').click();
+    await page.locator('#dlgYes').click();
+    await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('서버 삭제에 실패'));
+    assert.equal(await page.evaluate(()=>localStorage.getItem('wy-onboarded')),'1');
+    assert((await page.evaluate(()=>localStorage.getItem('wy-creds')))?.includes('test-secret'));
+    assert.equal(deleteCalls,1);
+
+    deleteAllowed=true;
+    await openMenu();
+    await page.locator('#mDelete').click();
+    await page.locator('#dlgYes').click();
+    await page.waitForFunction(()=>localStorage.getItem('wy-onboarded')===null);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('wy-creds')),null);
+    assert.equal(deleteCalls,2);
+    assert.deepEqual(errors,[]);
+    console.log('PASS failed account deletion preserves credentials; confirmed deletion clears credentials');
+  }finally{await context.close();}
+}
+
+async function runRemoteDisconnect(browser) {
+  const context=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});
+  await context.addInitScript(()=>{
+    localStorage.setItem('wy-onboarded','1');
+    localStorage.setItem('wy-name','테스터');
+    localStorage.setItem('wy-partner','cached-partner');
+    localStorage.setItem('wy-pname','하루');
+    localStorage.setItem('wy-creds',JSON.stringify({view:'test-owner',write:'test-secret'}));
+  });
+  await context.route(/supabase\.co/,r=>r.abort('blockedbyclient'));
+  await context.route('**/rest/v1/rpc/get_partner',r=>r.fulfill({
+    status:200,contentType:'application/json',body:JSON.stringify([{partner:null,partner_name:null}])}));
+  await context.route('**/rest/v1/rpc/my_access_summary',r=>r.fulfill({
+    status:200,contentType:'application/json',body:'[]'}));
+  const page=await context.newPage();
+  try{
+    await page.goto(ORIGIN+'/app.html',{waitUntil:'domcontentloaded',timeout:45000});
+    await page.waitForFunction(()=>localStorage.getItem('wy-partner')===null
+      && !document.querySelector('#empty')?.classList.contains('hide'),null,{timeout:15000});
+    assert.equal(await page.locator('#statuschip').isVisible(),false);
+    console.log('PASS server-side partner unlink clears cached relationship');
+  }finally{await context.close();}
+}
+
 (async()=>{
   checkInlineScripts('app.html');
   checkInlineScripts('index.html');
@@ -172,6 +271,8 @@ async function runMockLocationState(browser,name,sharing,minutesOld,hasCoordinat
     await runMockLocationState(browser,'paused',false,0,false);
     await runMockLocationState(browser,'stale',true,10,true);
     await runMockLocationState(browser,'fresh',true,0,true);
+    await runRemoteDisconnect(browser);
+    await runAccountLifecycle(browser);
     const context=await browser.newContext({viewport:{width:360,height:800},isMobile:true,hasTouch:true});
     const p=await context.newPage();
     await p.goto(ORIGIN+'/app.html?preview=main-empty',{waitUntil:'domcontentloaded'});
