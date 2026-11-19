@@ -193,7 +193,10 @@ async function runAccountLifecycle(browser) {
   const page=await context.newPage();
   const errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  const openMenu=async()=>{await page.locator('#menuBtn').click();await page.locator('#sheetMenu').waitFor({state:'visible'});};
+  const openMenu=async()=>{
+    if(!(await page.locator('#sheetMenu').isVisible())) await page.locator('#menuBtn').click();
+    await page.locator('#sheetMenu').waitFor({state:'visible'});
+  };
   try{
     await page.goto(ORIGIN+'/app.html',{waitUntil:'domcontentloaded',timeout:45000});
     await page.locator('#statuschip').waitFor({state:'visible',timeout:15000});
