@@ -3,7 +3,7 @@ name: Android Design Preview APK
 on:
   push:
     branches:
-      - design/diorama-first-main-screen
+      - feature/android-map-pip
     paths:
       - 'android/**'
       - '.github/workflows/android.yml'
@@ -42,18 +42,18 @@ jobs:
         run: gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace
 
       - name: Name preview APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk where-are-you-design-preview.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk where-are-you-pip-preview.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: where-are-you-design-preview
-          path: where-are-you-design-preview.apk
+          name: where-are-you-pip-preview
+          path: where-are-you-pip-preview.apk
 
       - name: Publish separate design preview release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: app-design-preview
-          name: 어디쯤 안드로이드 디자인 미리보기
+          tag_name: app-pip-preview
+          name: 어디쯤 안드로이드 작은 지도(PiP) 테스트
           prerelease: true
-          target_commitish: design/diorama-first-main-screen
-          files: where-are-you-design-preview.apk
+          target_commitish: feature/android-map-pip
+          files: where-are-you-pip-preview.apk
