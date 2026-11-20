@@ -1,0 +1,53 @@
+name: WhereAreYou
+options:
+  bundleIdPrefix: io.github.stevejjobs8
+  deploymentTarget:
+    iOS: "16.0"
+configs:
+  Debug: debug
+  Release: release
+targets:
+  WhereAreYou:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: "지금 너는 어디쯤"
+        NSLocationWhenInUseUsageDescription: "짝꿍에게 현재 위치를 공유할 때 사용합니다. 위치 공유는 앱에서 직접 켜고 끌 수 있습니다."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "서로 동의한 위치 공유를 화면이 꺼졌을 때도 지속하기 위해 사용합니다."
+        UIBackgroundModes:
+          - location
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UILaunchScreen:
+          UIColorName: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.stevejjobs8.whereareyou.iospreview
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+  WhereAreYouTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+    dependencies:
+      - target: WhereAreYou
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.stevejjobs8.whereareyou.iospreview.tests
+        SWIFT_VERSION: "5.0"
+schemes:
+  WhereAreYou:
+    build:
+      targets:
+        WhereAreYou: all
+    test:
+      targets:
+        - WhereAreYouTests

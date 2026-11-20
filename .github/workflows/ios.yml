@@ -1,0 +1,46 @@
+name: iOS SwiftUI Prototype
+
+on:
+  push:
+    branches: [feature/ios-wkwebview]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Xcode
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+          xcodegen --version
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Compile iOS Simulator app
+        run: |
+          xcodebuild -project ios/WhereAreYou.xcodeproj \
+            -scheme WhereAreYou -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/WhereAreYouDerived" \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Package Simulator app
+        run: |
+          mkdir -p ios/build-output
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$RUNNER_TEMP/WhereAreYouDerived/Build/Products/Debug-iphonesimulator/WhereAreYou.app" \
+            "ios/build-output/WhereAreYou-iOS-Simulator.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: where-are-you-ios-simulator
+          path: ios/build-output/WhereAreYou-iOS-Simulator.zip
+          if-no-files-found: error
