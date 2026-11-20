@@ -126,6 +126,14 @@ body:not(.dev) .hint{display:none}
 .scene-empty-title{margin:0 0 8px;font:400 20px/1.4 'Jua','Gowun Dodum',sans-serif}
 .scene-empty-desc{margin:0;color:var(--ink-soft);font-size:13px;line-height:1.65}
 .stage.location-unavailable canvas,.stage.location-unavailable .bubble{visibility:hidden}
+/* PiP layout: keep the miniature center stage and a small truthful caption. */
+.pip-label{display:none;position:absolute;top:8px;left:9px;z-index:3;
+  padding:4px 7px;border-radius:9px;background:rgba(255,255,255,.87);
+  color:#2C3150;font:11px 'Gowun Dodum',sans-serif;pointer-events:none}
+body.app.pip .pip-label{display:block}
+body.app.pip .bubble{display:none!important}
+body.app.pip .attr{font-size:8px;bottom:1px;opacity:.66}
+body.app.pip .stage{padding:0}
 </style>
 </head>
 <body>
@@ -137,6 +145,7 @@ body:not(.dev) .hint{display:none}
 
 <section class="stage" id="stage">
   <canvas id="c" role="img" aria-label="상대방의 현재 위치를 보여주는 미니어처 3D 동네"></canvas>
+  <span class="pip-label" id="pipLabel" aria-live="off">작은 지도</span>
   <header class="scene-header" aria-label="현재 위치 정보">
     <div>
       <p class="scene-kicker">지금 너는 어디쯤</p>
@@ -1123,6 +1132,7 @@ function gpsStep(dt, vel, underground){
 /* ================= 카메라 ================= */
 const ZMIN = .12;   // 작을수록 더 가까이 확대
 let dist=80, zoom=document.body.classList.contains('app') ? .83 : 1, az=1.2, el=.62, azT=az, elT=el;
+let pipSavedZoom = null;
 const VIEW_EL = {top:1.45, tilt:document.body.classList.contains('app') ? .72 : .62, side:.2};
 const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1199,6 +1209,22 @@ let DEVICE = null; try{ DEVICE = localStorage.getItem('wy-device'); }catch(e){}
 /* 실제 위치 모드: 앱 안(앱이 인증 정보 전달) 또는 앱으로 연결해 둔 웹 브라우저(기기 토큰)일 때만. 링크만으로는 볼 수 없음 */
 const DEMO = /[?&]demo\b/.test(location.search);
 const REALC = !DEV && !DEMO && (BRIDGE || DEVICE) ? 'on' : null;
+/* Only the embedding first-party app may switch this map into compact PiP framing. */
+document.getElementById('pipLabel').textContent = DEMO
+  ? '시연 · 실제 위치 아님' : '지금 너는 어디쯤';
+window.addEventListener('message', e=>{
+  if(e.origin!==location.origin || e.source!==window.parent
+      || !e.data || e.data.__wyPip!==1) return;
+  const enabled=e.data.enabled===true;
+  document.body.classList.toggle('pip',enabled);
+  if(enabled && pipSavedZoom===null){
+    pipSavedZoom=zoom;
+    zoom=.66;
+  }else if(!enabled && pipSavedZoom!==null){
+    zoom=pipSavedZoom;
+    pipSavedZoom=null;
+  }
+});
 /* Requests are accepted only from this page's same-origin demo app frame. */
 window.addEventListener('message', e=>{
   if(!DEMO || e.origin!==location.origin || e.source!==window.parent) return;
