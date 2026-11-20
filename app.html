@@ -55,7 +55,9 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
 .pad-t{padding-top:calc(14px + var(--safe-t))}
 .pad-b{padding-bottom:calc(16px + var(--safe-b))}
 
-/* 떠 있는 상태 칩 (좌상단) */
+/* 상태는 지도(index.html) 위쪽 상태 바가 보여줌 → 떠 있는 칩은 쓰지 않음 */
+.statuschip{display:none!important}
+/* 떠 있는 상태 칩 (좌상단, 사용 안 함) */
 .statuschip{position:absolute;top:calc(14px + var(--safe-t));left:16px;max-width:66%;
   background:var(--card);border-radius:20px;padding:10px 15px 11px;box-shadow:var(--sh-m);
   display:flex;flex-direction:column;gap:3px;transform-origin:left top;animation:pop .35s ease}
@@ -67,31 +69,31 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
 .dot.pulse{animation:pulse 1.8s ease-out infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 40%,transparent)}100%{box-shadow:0 0 0 10px transparent}}
 
-/* 둥근 아이콘 버튼 (메뉴 등) */
-.rbtn{position:absolute;width:48px;height:48px;border-radius:17px;background:var(--card);
-  box-shadow:var(--sh-m);display:flex;align-items:center;justify-content:center;top:calc(14px + var(--safe-t));right:16px}
+/* 메뉴 버튼: 지도 위쪽 상태 바 오른쪽 끝에 얹히는 납작한 아이콘 (카드·그림자 없음) */
+.rbtn{position:absolute;width:48px;height:48px;border-radius:14px;background:none;color:var(--muted);
+  display:flex;align-items:center;justify-content:center;top:calc(10px + var(--safe-t));right:8px}
 .rbtn svg{width:24px;height:24px}
 
-/* 열람 알림 토스트 칩 */
-.accesschip{position:absolute;top:calc(74px + var(--safe-t));left:50%;transform:translateX(-50%);
-  background:var(--pink-bg);color:var(--pink-d);border:1px solid var(--pink-line);
-  border-radius:16px;padding:8px 14px;font-size:12.5px;box-shadow:var(--sh-s);display:flex;align-items:center;gap:7px;
-  max-width:84%;animation:pop .4s ease}
+/* 열람 알림: 상태 바 바로 아래 한 줄, 누르면 사라짐 (분홍·하트 없이 조용하게) */
+.accesschip{position:absolute;top:calc(80px + var(--safe-t));left:50%;transform:translateX(-50%);
+  background:color-mix(in srgb,var(--card) 88%,transparent);color:var(--muted);
+  border-radius:10px;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:7px;
+  max-width:88%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:pop .4s ease}
 
-/* 하단 영역 */
-.bottom{position:absolute;left:16px;right:16px;bottom:calc(18px + var(--safe-b));display:flex;flex-direction:column;gap:11px}
-.locchip{align-self:center;background:var(--card);border-radius:16px;padding:7px 14px;font-size:12px;color:var(--muted);box-shadow:var(--sh-s)}
-.sharecard{background:var(--card);border-radius:26px;min-height:60px;box-shadow:var(--sh-m);
-  display:flex;align-items:center;gap:13px;padding:11px 12px 11px 18px}
+/* 하단: 내 위치 공유 — 떠 있는 카드 대신 화면 아래 가장자리에 붙은 얇은 줄 */
+.bottom{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:8px}
+.locchip{align-self:center;background:var(--card);border-radius:10px;padding:6px 12px;font-size:12px;color:var(--muted);margin-bottom:4px}
+.sharecard{background:color-mix(in srgb,var(--card) 86%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border-top:1px solid var(--line);min-height:64px;display:flex;align-items:center;gap:12px;padding:6px 10px calc(6px + var(--safe-b)) 20px}
 .sharecard .txt{flex:1;min-width:0}
-.sharecard .t1{font-family:'Jua';font-size:15.5px}
+.sharecard .t1{font-size:14.5px;font-weight:700}
 .sharecard .t2{font-size:11.5px;color:var(--muted);margin-top:1px}
 
 /* 토글 스위치 (48 터치) */
 .switch{width:58px;height:48px;flex:none;position:relative;border-radius:16px}
 .switch .track{position:absolute;top:9px;left:4px;right:4px;height:30px;border-radius:16px;background:#C9D2E6;transition:background .25s}
 .switch .knob{position:absolute;top:12px;left:7px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .25s}
-.switch[aria-checked="true"] .track{background:var(--pink)}
+.switch[aria-checked="true"] .track{background:var(--ok)}
 .switch[aria-checked="true"] .knob{transform:translateX(23px)}
 
 /* 빈 상태 (짝꿍 없음) */
@@ -564,7 +566,7 @@ setInterval(()=>{ if(Native.isSharing()){ const s=Native.status(); if(s) setShar
 
 /* 지도(iframe)가 보내는 짝꿍 실시간 상태를 상단 칩에 반영 */
 window.addEventListener('message',e=>{
-  const d=e.data; if(!d||d.__wy!==1||!state.partner) return;
+  const d=e.data; if(!d||d.__wy!==1||!state.partner||d.bar) return;
   if(d.name){ state.pname=d.name; LS.set('pname',d.name); $('#pname').textContent=d.name; }
   const stuck=d.off||d.nopartner||!d.have||d.err;
   $('#pdot').className='dot'+(stuck?' off':' pulse');
@@ -577,9 +579,10 @@ async function loadAccess(){
   try{
     const a=await rpc('my_access_summary',authBody());
     if(!Array.isArray(a)||!a.length) return;
-    const txt='💗 최근 30일 '+a.map(o=>(o.viewer_name||'짝꿍')+josa(o.viewer_name)+' '+o.views+'번').join(', ')+' 내 위치를 봤어요';
+    const txt='최근 30일 '+a.map(o=>(o.viewer_name||'짝꿍')+josa(o.viewer_name)+' '+o.views+'번').join(', ')+' 내 위치를 봤어요';
     const chip=$('#accesschip'); chip.textContent=txt; chip.classList.remove('hide');
     chip.onclick=()=>chip.classList.add('hide');
+    setTimeout(()=>chip.classList.add('hide'),8000);
   }catch(e){}
 }
 
@@ -709,7 +712,7 @@ function preview(){
   // main 계열
   if(scr!=='main-empty'){ state.partner='demo'; state.pname='하루'; }
   if(scr==='main'||scr==='main-empty'){ showMain(); if(scr!=='main-empty'){ $('#pstate').textContent='지하철 타고 이동 중 · 방금'; LS.set('sharing','1'); paintShare(true);
-      $('#accesschip').textContent='💗 최근 30일 하루가 3번 내 위치를 봤어요'; $('#accesschip').classList.remove('hide'); $('#locchip').textContent='하루 · 합정역 2호선 부근'; $('#locchip').classList.remove('hide'); } }
+      $('#accesschip').textContent='최근 30일 하루가 3번 내 위치를 봤어요'; $('#accesschip').classList.remove('hide'); $('#locchip').textContent='하루 · 합정역 2호선 부근'; $('#locchip').classList.remove('hide'); } }
   else if(scr==='pair'){ showMain(); showPane('#sheetPair','invite'); $('#inviteCode').textContent='AB12-CD34'; $('#inviteTimer').textContent='9:12'; openSheet('#sheetPair'); }
   else if(scr==='enter'){ showMain(); showPane('#sheetPair','enter'); openSheet('#sheetPair'); }
   else if(scr==='menu'){ showMain(); $('#mNameCur').textContent='하루'; openSheet('#sheetMenu'); }
