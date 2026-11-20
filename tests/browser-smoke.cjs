@@ -193,16 +193,21 @@ async function runAccountLifecycle(browser) {
   const page=await context.newPage();
   const errors=[];
   page.on('pageerror',e=>errors.push(e.message));
+  // Account RPC tests trigger controls programmatically; full viewport clickability is
+  // verified separately by runMain(). This avoids browser animation/scroll flakiness.
   const openMenu=async()=>{
-    if(!(await page.locator('#sheetMenu').isVisible())) await page.locator('#menuBtn').click();
-    await page.locator('#sheetMenu').waitFor({state:'visible'});
+    await page.evaluate(()=>{
+      document.querySelector('#menuBtn').click();
+    });
+    await page.waitForFunction(()=>document.querySelector('#sheetMenu').classList.contains('on'));
   };
+  const activate=selector=>page.locator(selector).evaluate(element=>element.click());
   try{
     await page.goto(ORIGIN+'/app.html',{waitUntil:'domcontentloaded',timeout:45000});
     await page.locator('#statuschip').waitFor({state:'visible',timeout:15000});
     await openMenu();
-    await page.locator('#mPair').click();
-    await page.locator('#pUnpair').click();
+    await activate('#mPair');
+    await activate('#pUnpair');
     await page.locator('#dlgYes').click();
     await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('연결 해제에 실패'));
     assert.equal(await page.evaluate(()=>localStorage.getItem('wy-partner')),'partner-test',
@@ -210,7 +215,7 @@ async function runAccountLifecycle(browser) {
     assert.equal(unpairCalls,1);
 
     unpairAllowed=true;
-    await page.locator('#pUnpair').click();
+    await activate('#pUnpair');
     await page.locator('#dlgYes').click();
     await page.waitForFunction(()=>document.querySelector('#empty')&&!document.querySelector('#empty').classList.contains('hide'));
     assert.equal(await page.evaluate(()=>localStorage.getItem('wy-partner')),null);
@@ -218,7 +223,7 @@ async function runAccountLifecycle(browser) {
     console.log('PASS unpair failure retains link; successful unpair clears link');
 
     await openMenu();
-    await page.locator('#mDelete').click();
+    await activate('#mDelete');
     await page.locator('#dlgYes').click();
     await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('서버 삭제에 실패'));
     assert.equal(await page.evaluate(()=>localStorage.getItem('wy-onboarded')),'1');
@@ -227,7 +232,7 @@ async function runAccountLifecycle(browser) {
 
     deleteAllowed=true;
     await openMenu();
-    await page.locator('#mDelete').click();
+    await activate('#mDelete');
     await page.locator('#dlgYes').click();
     await page.waitForFunction(()=>localStorage.getItem('wy-onboarded')===null);
     assert.equal(await page.evaluate(()=>localStorage.getItem('wy-creds')),null);
@@ -277,6 +282,58 @@ async function runRemoteDisconnect(browser) {
   }finally{await context.close();}
 }
 
+
+async function runPipBrowserPreview(browser,name,url){
+  const context=await browser.newContext({
+    viewport:{width:360,height:800},isMobile:true,hasTouch:true,reducedMotion:'reduce'
+  });
+  await context.addInitScript(()=>{
+    window.__pipRequested=false;
+    window.__pipReady=false;
+    window.AndroidBridge={
+      isPipSupported:()=>true,
+      setPipReady:on=>{window.__pipReady=!!on;},
+      enterPip:()=>{
+        window.__pipRequested=true;
+        window.WY?.onPipModeChanged(true);
+      },
+      auth:()=>JSON.stringify({view:'',write:''}),
+      isSharing:()=>false,
+      shareStatus:()=>''
+    };
+  });
+  let serverCalls=0;
+  await context.route(/supabase\.co/,route=>{
+    serverCalls++;return route.abort('blockedbyclient');
+  });
+  const page=await context.newPage();
+  const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  try{
+    await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
+    await page.locator('#pipBtn').waitFor({state:'visible',timeout:20000});
+    await page.waitForFunction(()=>window.__pipReady===true);
+    assert.equal(await page.locator('#mapframe').isVisible(),true);
+    await page.locator('#pipBtn').click();
+    await page.waitForFunction(()=>window.__pipRequested && document.body.classList.contains('pip-mode'));
+    assert.equal(await page.locator('#overlay').isVisible(),false,'Controls must be hidden in PiP');
+    await page.waitForFunction(()=>{
+      const d=document.querySelector('#mapframe')?.contentDocument;
+      return d?.body.classList.contains('pip')
+        && d?.querySelector('#pipLabel')?.textContent.includes('실제 위치 아님');
+    },null,{timeout:25000});
+    assert.equal(await page.locator('#mapframe').isVisible(),true);
+    await page.screenshot({path:path.join(OUT,name+'.png')});
+    await page.evaluate(()=>window.WY.onPipModeChanged(false));
+    await page.waitForFunction(()=>!document.body.classList.contains('pip-mode'));
+    assert.equal(await page.locator('#overlay').isVisible(),true);
+    assert.equal(await page.locator('#pipBtn').isVisible(),true);
+    assert.equal(serverCalls,0,'Demo PiP must not connect to location server');
+    assert.deepEqual(errors,[],name+': browser JS errors');
+    console.log('PASS',name,'native PiP button, compact map, truthful demo label, restore UI');
+  }finally{await context.close();}
+}
+
 (async()=>{
   checkInlineScripts('app.html');
   checkInlineScripts('index.html');
@@ -286,9 +343,11 @@ async function runRemoteDisconnect(browser) {
   try{
     await runMain(browser,'local-mobile-360',ORIGIN+'/app.html?preview=main',360,800);
     await runMain(browser,'local-mobile-412',ORIGIN+'/app.html?preview=main',412,915);
-    await runMain(browser,'deployed-mobile',LIVE+'/app-design-preview.html?preview=main',360,800);
+    await runMain(browser,'deployed-mobile',LIVE+'/app-pip-preview.html?preview=main',360,800);
     await runSolo(browser,'solo-local',ORIGIN+'/app.html?preview=main&solo=1');
-    await runSolo(browser,'solo-deployed',LIVE+'/app-design-preview.html?preview=main&solo=1');
+    await runSolo(browser,'solo-deployed',LIVE+'/app-pip-preview.html?preview=main&solo=1');
+    await runPipBrowserPreview(browser,'pip-local',ORIGIN+'/app.html?preview=main&solo=1');
+    await runPipBrowserPreview(browser,'pip-deployed',LIVE+'/app-pip-preview.html?preview=main&solo=1');
     await runMockLocationState(browser,'no-fix',true,0,false);
     await runMockLocationState(browser,'paused',false,0,false);
     await runMockLocationState(browser,'stale',true,10,true);

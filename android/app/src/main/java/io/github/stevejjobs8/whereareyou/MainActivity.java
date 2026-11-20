@@ -2,7 +2,9 @@ package io.github.stevejjobs8.whereareyou;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.PictureInPictureParams;
 import android.content.ClipData;
+import android.content.res.Configuration;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -12,6 +14,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.util.Rational;
 import android.view.View;
 import android.view.Window;
 import android.webkit.JavascriptInterface;
@@ -36,6 +39,69 @@ public class MainActivity extends Activity {
     private SharedPreferences sp;
     private WebView web;
     private boolean startAfterPerm = false;
+    private boolean pipReady = false;
+    private boolean suppressExternalPip = false;
+
+    private boolean deviceSupportsPip() {
+        return Build.VERSION.SDK_INT >= 26
+                && getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE);
+    }
+
+    private PictureInPictureParams pipParams() {
+        PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(1, 1));
+        if (Build.VERSION.SDK_INT >= 31) {
+            builder.setAutoEnterEnabled(pipReady);
+            builder.setSeamlessResizeEnabled(false); // WebGL map is not video playback.
+        }
+        return builder.build();
+    }
+
+    private void updatePipAvailability() {
+        if (!deviceSupportsPip()) return;
+        try { setPictureInPictureParams(pipParams()); }
+        catch (IllegalStateException ignored) {}
+    }
+
+    private void suppressPipForExternalActivity() {
+        suppressExternalPip = true;
+        if (Build.VERSION.SDK_INT >= 31 && deviceSupportsPip()) {
+            try {
+                setPictureInPictureParams(new PictureInPictureParams.Builder()
+                        .setAspectRatio(new Rational(1, 1))
+                        .setAutoEnterEnabled(false)
+                        .setSeamlessResizeEnabled(false)
+                        .build());
+            } catch (IllegalStateException ignored) {}
+        }
+    }
+
+    private void enterMapPip() {
+        if (!pipReady || !deviceSupportsPip() || isInPictureInPictureMode()) {
+            callJs("window.WY&&WY.onPipUnavailable&&WY.onPipUnavailable()");
+            return;
+        }
+        try {
+            if (!enterPictureInPictureMode(pipParams()))
+                callJs("window.WY&&WY.onPipUnavailable&&WY.onPipUnavailable()");
+        } catch (IllegalStateException | SecurityException e) {
+            callJs("window.WY&&WY.onPipUnavailable&&WY.onPipUnavailable()");
+        }
+    }
+
+    @Override protected void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        boolean suppressed = suppressExternalPip;
+        // Android 12+ restores auto-enter on resume after the external activity closes.
+        if (Build.VERSION.SDK_INT < 31) suppressExternalPip = false;
+        if (!suppressed && Build.VERSION.SDK_INT < 31 && pipReady && !isFinishing())
+            enterMapPip();
+    }
+
+    @Override public void onPictureInPictureModeChanged(boolean inPip, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(inPip, newConfig);
+        callJs("window.WY&&WY.onPipModeChanged&&WY.onPipModeChanged(" + inPip + ")");
+    }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -58,7 +124,10 @@ public class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 String u = r.getUrl().toString();
                 if (u.startsWith(BASE)) return false;
-                try { startActivity(new Intent(Intent.ACTION_VIEW, r.getUrl())); } catch (Exception ignored) {}
+                try {
+                    suppressPipForExternalActivity();
+                    startActivity(new Intent(Intent.ACTION_VIEW, r.getUrl()));
+                } catch (Exception ignored) {}
                 return true;
             }
         });
@@ -71,13 +140,17 @@ public class MainActivity extends Activity {
             sp.edit().putBoolean("on", false).apply();
         }
         web.loadUrl(BASE + (solo
-                ? "app-design-preview.html?preview=main&solo=1"
-                : "app-design-preview.html"));
+                ? "app-pip-preview.html?preview=main&solo=1"
+                : "app-pip-preview.html"));
     }
 
     @Override protected void onResume() {
         super.onResume();
         if (web != null) web.evaluateJavascript("window.WY&&WY.onResume&&WY.onResume()", null);
+        if (suppressExternalPip) {
+            suppressExternalPip = false;
+            updatePipAvailability();
+        }
     }
 
     @Override public void onBackPressed() {
@@ -105,19 +178,29 @@ public class MainActivity extends Activity {
             sp.edit().remove("view_code").remove("write_key").putBoolean("on", false).commit();
         }
         @JavascriptInterface public boolean isSharing() { return sp.getBoolean("on", false); }
+        @JavascriptInterface public boolean isPipSupported() { return deviceSupportsPip(); }
+        @JavascriptInterface public void setPipReady(boolean ready) {
+            runOnUiThread(() -> {
+                pipReady = ready;
+                updatePipAvailability();
+            });
+        }
+        @JavascriptInterface public void enterPip() {
+            runOnUiThread(() -> enterMapPip());
+        }
 
         /** Test APK only: keep the user's chosen mode across activity restarts. */
         @JavascriptInterface public void enterConnectionMode() {
             runOnUiThread(() -> {
                 sp.edit().putBoolean("preview_solo", false).apply();
-                web.loadUrl(BASE + "app-design-preview.html");
+                web.loadUrl(BASE + "app-pip-preview.html");
             });
         }
         @JavascriptInterface public void enterSoloMode() {
             runOnUiThread(() -> {
                 stopService(new Intent(MainActivity.this, LocationService.class));
                 sp.edit().putBoolean("on", false).putBoolean("preview_solo", true).apply();
-                web.loadUrl(BASE + "app-design-preview.html?preview=main&solo=1");
+                web.loadUrl(BASE + "app-pip-preview.html?preview=main&solo=1");
             });
         }
         @JavascriptInterface public String shareStatus() { return LocationService.lastStatus; }
@@ -147,15 +230,24 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void shareText(String text) {
             runOnUiThread(() -> {
                 Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text);
+                suppressPipForExternalActivity();
                 startActivity(Intent.createChooser(i, "보내기"));
             });
         }
         @JavascriptInterface public void openBattery() {
-            runOnUiThread(() -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + getPackageName()))));
+            runOnUiThread(() -> {
+                suppressPipForExternalActivity();
+                startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())));
+            });
         }
         @JavascriptInterface public void openUrl(String url) {
-            runOnUiThread(() -> { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {} });
+            runOnUiThread(() -> {
+                try {
+                    suppressPipForExternalActivity();
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                } catch (Exception ignored) {}
+            });
         }
     }
 
