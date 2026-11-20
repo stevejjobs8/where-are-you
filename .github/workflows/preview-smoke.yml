@@ -3,7 +3,7 @@ name: Design Preview Browser Smoke
 on:
   push:
     branches:
-      - design/diorama-first-main-screen
+      - feature/android-map-pip
     paths:
       - 'app.html'
       - 'index.html'
