@@ -13,12 +13,17 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.LinearLayout;
+import android.window.OnBackInvokedDispatcher;
 
 import org.json.JSONObject;
 
@@ -33,6 +38,7 @@ import java.util.List;
 public class MainActivity extends Activity {
     static final String BASE = "https://stevejjobs8.github.io/where-are-you/";
     private static final int RC_START = 7, RC_PERMS = 8;
+    private static final int TOP_BAR = Color.parseColor("#E3EBF6"), BOTTOM_BAR = Color.parseColor("#FFFFFF");
     private SharedPreferences sp;
     private WebView web;
     private boolean startAfterPerm = false;
@@ -43,9 +49,20 @@ public class MainActivity extends Activity {
         sp = getSharedPreferences("share", MODE_PRIVATE);
 
         Window w = getWindow();
-        w.setStatusBarColor(Color.parseColor("#E3EBF6"));
-        w.setNavigationBarColor(Color.parseColor("#FFFFFF"));
-        w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        if (Build.VERSION.SDK_INT < 35) {
+            // Android 14 이하: 시스템이 상태 바·내비게이션 바 색을 칠해 준다.
+            w.setStatusBarColor(TOP_BAR);
+            w.setNavigationBarColor(BOTTOM_BAR);
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController c = w.getInsetsController();
+            if (c != null) {
+                int dark = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                c.setSystemBarsAppearance(dark, dark);   // 밝은 바 위에 어두운 아이콘
+            }
+        } else {
+            w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+        }
 
         web = new WebView(this);
         web.setBackgroundColor(Color.parseColor("#E3EBF6"));
@@ -63,8 +80,45 @@ public class MainActivity extends Activity {
             }
         });
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");
-        setContentView(web);
+        setContentView(buildRoot());
         web.loadUrl(BASE + "app.html");
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            // Android 16(API 36) 목표부터는 onBackPressed가 불리지 않는다. 새 방식으로 뒤로 가기를 받는다.
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
+        }
+    }
+
+    /**
+     * Android 15+(API 35)는 앱 화면을 상태 바·내비게이션 바 밑까지 강제로 그린다(edge-to-edge).
+     * 웹 화면이 바에 가리지 않도록, 바 높이만큼 색 띠를 위아래에 두고 WebView는 그 사이에 둔다.
+     * 키보드가 올라오면 아래 띠가 키보드 높이만큼 늘어나 입력칸이 가리지 않는다.
+     * Android 14 이하에서는 시스템이 이미 바 영역을 비워 두므로 띠 높이는 0이 된다.
+     */
+    private View buildRoot() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(TOP_BAR);
+        View top = new View(this), bottom = new View(this);
+        top.setBackgroundColor(TOP_BAR);
+        bottom.setBackgroundColor(BOTTOM_BAR);
+        root.addView(top, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0));
+        root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(bottom, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0));
+        if (Build.VERSION.SDK_INT >= 35) {
+            root.setOnApplyWindowInsetsListener((v, in) -> {
+                android.graphics.Insets bars = in.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                android.graphics.Insets ime = in.getInsets(WindowInsets.Type.ime());
+                v.setPadding(bars.left, 0, bars.right, 0);
+                top.getLayoutParams().height = bars.top;
+                bottom.getLayoutParams().height = Math.max(bars.bottom, ime.bottom);
+                top.requestLayout();
+                bottom.requestLayout();
+                return WindowInsets.CONSUMED;
+            });
+        }
+        return root;
     }
 
     @Override protected void onResume() {
@@ -72,10 +126,14 @@ public class MainActivity extends Activity {
         if (web != null) web.evaluateJavascript("window.WY&&WY.onResume&&WY.onResume()", null);
     }
 
-    @Override public void onBackPressed() {
-        if (web == null) { super.onBackPressed(); return; }
+    /** Android 12 이하용. 13 이상은 onCreate에서 등록한 콜백이 handleBack을 부른다. */
+    @Override public void onBackPressed() { handleBack(); }
+
+    /** 웹이 열린 시트·화면을 먼저 닫게 하고, 닫을 게 없으면 앱을 끄지 않고 뒤로 보낸다. */
+    private void handleBack() {
+        if (web == null) { moveTaskToBack(true); return; }
         web.evaluateJavascript("(window.WY&&WY.onBack&&WY.onBack())?1:0", val -> {
-            if (!"1".equals(val)) moveTaskToBack(true);   // 앱을 끄지 않고 뒤로 보냄
+            if (!"1".equals(val)) moveTaskToBack(true);
         });
     }
 

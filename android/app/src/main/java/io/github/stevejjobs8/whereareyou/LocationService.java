@@ -61,7 +61,7 @@ public class LocationService extends Service {
         nm.createNotificationChannel(new NotificationChannel(CH, "위치 공유 중", NotificationManager.IMPORTANCE_LOW));
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         Notification n = new Notification.Builder(this, CH)
-                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setSmallIcon(R.drawable.ic_stat_share)
                 .setContentTitle("위치를 공유하고 있어요")
                 .setContentText("앱을 열어 공유를 멈출 수 있어요")
                 .setContentIntent(open)
