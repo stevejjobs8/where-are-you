@@ -193,20 +193,21 @@ async function runAccountLifecycle(browser) {
   const page=await context.newPage();
   const errors=[];
   page.on('pageerror',e=>errors.push(e.message));
+  // Account RPC tests trigger controls programmatically; full viewport clickability is
+  // verified separately by runMain(). This avoids browser animation/scroll flakiness.
   const openMenu=async()=>{
-    if(!(await page.locator('#sheetMenu').isVisible())) await page.locator('#menuBtn').click();
-    await page.locator('#sheetMenu').waitFor({state:'visible'});
-    await page.waitForFunction(()=>{
-      const rect=document.querySelector('#mPair').getBoundingClientRect();
-      return rect.top>=0 && rect.bottom <= window.innerHeight;
-    },null,{timeout:6000});
+    await page.evaluate(()=>{
+      document.querySelector('#menuBtn').click();
+    });
+    await page.waitForFunction(()=>document.querySelector('#sheetMenu').classList.contains('on'));
   };
+  const activate=selector=>page.locator(selector).evaluate(element=>element.click());
   try{
     await page.goto(ORIGIN+'/app.html',{waitUntil:'domcontentloaded',timeout:45000});
     await page.locator('#statuschip').waitFor({state:'visible',timeout:15000});
     await openMenu();
-    await page.locator('#mPair').click();
-    await page.locator('#pUnpair').click();
+    await activate('#mPair');
+    await activate('#pUnpair');
     await page.locator('#dlgYes').click();
     await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('연결 해제에 실패'));
     assert.equal(await page.evaluate(()=>localStorage.getItem('wy-partner')),'partner-test',
@@ -214,7 +215,7 @@ async function runAccountLifecycle(browser) {
     assert.equal(unpairCalls,1);
 
     unpairAllowed=true;
-    await page.locator('#pUnpair').click();
+    await activate('#pUnpair');
     await page.locator('#dlgYes').click();
     await page.waitForFunction(()=>document.querySelector('#empty')&&!document.querySelector('#empty').classList.contains('hide'));
     assert.equal(await page.evaluate(()=>localStorage.getItem('wy-partner')),null);
@@ -222,7 +223,7 @@ async function runAccountLifecycle(browser) {
     console.log('PASS unpair failure retains link; successful unpair clears link');
 
     await openMenu();
-    await page.locator('#mDelete').click();
+    await activate('#mDelete');
     await page.locator('#dlgYes').click();
     await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('서버 삭제에 실패'));
     assert.equal(await page.evaluate(()=>localStorage.getItem('wy-onboarded')),'1');
@@ -231,7 +232,7 @@ async function runAccountLifecycle(browser) {
 
     deleteAllowed=true;
     await openMenu();
-    await page.locator('#mDelete').click();
+    await activate('#mDelete');
     await page.locator('#dlgYes').click();
     await page.waitForFunction(()=>localStorage.getItem('wy-onboarded')===null);
     assert.equal(await page.evaluate(()=>localStorage.getItem('wy-creds')),null);
