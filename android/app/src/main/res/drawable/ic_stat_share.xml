@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 알림 표시줄 아이콘: 흰색 단색, 하트는 구멍 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="52" android:viewportHeight="52">
+    <group android:translateX="-28" android:translateY="-30.5">
+        <path android:fillColor="#FFFFFF" android:fillType="evenOdd"
+            android:pathData="M54,80C54,80 37,63 37,50A17,17 0,0 1,71 50C71,63 54,80 54,80Z M54,57C48,52.5 46,50 46,47.3C46,45 47.8,43.3 50,43.3C51.6,43.3 53.1,44.2 54,45.5C54.9,44.2 56.4,43.3 58,43.3C60.2,43.3 62,45 62,47.3C62,50 60,52.5 54,57Z" />
+    </group>
+</vector>

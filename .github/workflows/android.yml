@@ -25,7 +25,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '8.14.3'
 
       - name: Restore stable signing key
         env:
@@ -39,12 +39,29 @@ jobs:
           KS_PASS: ${{ secrets.KS_PASS }}
         run: gradle assembleDebug --no-daemon --stacktrace
 
+      # Play 업로드용: 서명된 릴리스 AAB. 공개 다운로드 링크에는 올리지 않고 작업 결과물로만 보관한다.
+      - name: Build signed release AAB
+        if: env.HAS_KS == 'true'
+        working-directory: android
+        env:
+          KS_PASS: ${{ secrets.KS_PASS }}
+        run: gradle bundleRelease --no-daemon --stacktrace
+
+      - name: Upload release AAB
+        if: env.HAS_KS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Publish to release (direct download link)
+        # 작업 브랜치 빌드가 공개 다운로드 링크를 덮어쓰지 않도록 main에서만 올린다.
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: app-latest

@@ -4,14 +4,14 @@ plugins {
 
 android {
     namespace 'io.github.stevejjobs8.whereareyou'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId 'io.github.stevejjobs8.whereareyou'
         minSdk 26
-        targetSdk 34
-        versionCode 6
-        versionName '0.4.2'
+        targetSdk 36
+        versionCode 10
+        versionName '1.0.0'
     }
 
     signingConfigs {
@@ -23,6 +23,13 @@ android {
         }
     }
     buildTypes {
+        release {
+            // Play 업로드용 AAB. 고정 서명 열쇠(stable.keystore)를 업로드 키로 쓴다.
+            // Play 앱 서명이 최종 서명을 맡으므로, 이 열쇠는 Play에 '업로드 키'로 등록된다.
+            if (file('stable.keystore').exists()) signingConfig signingConfigs.stable
+            // JS 브리지(@JavascriptInterface) 이름이 바뀌면 웹이 호출하지 못하므로 축소하지 않는다.
+            minifyEnabled false
+        }
         debug {
             // 고정 서명 열쇠가 있으면 그걸로 서명 → 새 버전을 덮어쓰기 설치 가능
             if (file('stable.keystore').exists()) signingConfig signingConfigs.stable
