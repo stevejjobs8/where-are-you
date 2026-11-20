@@ -283,6 +283,15 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
 .solo-weather button[aria-pressed="true"]{border-color:var(--pink);background:var(--pink-bg);color:var(--pink-d)}
 .solo-real{font-size:11px;text-decoration:underline;color:var(--muted);padding:4px}
 @media(max-width:360px){.solo-tools{left:12px;right:12px}.solo-row button{min-width:43px;padding:6px 8px}}
+/* Native Android PiP: keep the Three.js canvas, remove interactive chrome. */
+.pip-button{top:calc(75px + var(--safe-t));right:19px;z-index:4}
+.pip-button svg{width:21px;height:21px}
+body.pip-mode #overlay, body.pip-mode #onboard,
+body.pip-mode #scrim, body.pip-mode .sheet,
+body.pip-mode #dialog, body.pip-mode #celebrate,
+body.pip-mode #toast {display:none!important}
+body.pip-mode #maplayer,body.pip-mode #mapframe{inset:0;width:100%;height:100%}
+@media(max-width:360px){.pip-button{right:15px;top:calc(70px + var(--safe-t))}}
 </style>
 </head>
 <body>
@@ -323,6 +332,12 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
   </div>
   <button class="rbtn" id="menuBtn" aria-label="메뉴">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <button class="rbtn pip-button hide" id="pipBtn" aria-label="작은 지도로 보기" title="다른 앱 위에 작은 지도 띄우기">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="3"/>
+      <rect x="11" y="11" width="8" height="7" rx="1.5"/>
+    </svg>
   </button>
   <div class="accesschip hide" id="accesschip" role="button"></div>
 
@@ -518,6 +533,7 @@ button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer
 /* ===================== 설정 ===================== */
 const SB_URL='https://vjfzfjjktszxgqhwxqko.supabase.co', SB_KEY='sb_publishable_HvlTYMKZ4AQzELwmWqcS9g_SW29EBwB';
 const AB = window.AndroidBridge || null;
+const PIP_SUPPORTED = !!(AB&&AB.isPipSupported&&AB.isPipSupported());
 const qp = new URLSearchParams(location.search);
 const PREVIEW = qp.get('preview');           // 스크린샷/대체용
 const SOLO = PREVIEW==='main' && qp.get('solo')==='1';
@@ -551,6 +567,12 @@ window.WY={
   onPermissions(){ /* 권한 응답 후 */ },
   onStatus(s){ if(s) setShareSub(s); },
   onResume(){ refreshPartner(); loadAccess(); paintShare(Native.isSharing()); },
+  onPipModeChanged(enabled){
+    document.body.classList.toggle('pip-mode',!!enabled);
+    const frame=$('#mapframe');
+    if(frame.contentWindow) frame.contentWindow.postMessage({__wyPip:1,enabled:!!enabled},location.origin);
+  },
+  onPipUnavailable(){ toast('작은 지도를 실행할 수 없어요. Android PiP 설정을 확인해 주세요'); },
   onBack(){ // 네이티브 뒤로가기: 열린 레이어부터 닫음. 처리하면 true
     if($('#dialog').classList.contains('on')){ $('#dialog').classList.remove('on'); return true; }
     if($('#celebrate').classList.contains('on')) return true;
@@ -604,6 +626,9 @@ function showMain(){
   const liveMap=has&&!PREVIEW, demoMap=has&&PREVIEW==='main';
   $('#mapframe').style.display = (liveMap||demoMap)?'block':'none';
   $('#faux').style.display = PREVIEW&&!demoMap?'block':'none';
+  const canPip = (liveMap||demoMap) && PIP_SUPPORTED;
+  $('#pipBtn').classList.toggle('hide',!canPip);
+  if(AB && AB.setPipReady) AB.setPipReady(canPip);
   if((liveMap||demoMap) && $('#mapframe').src.indexOf('app=1')<0){
     $('#mapframe').src=demoMap?'index.html?app=1&demo=1':'index.html?app=1';
   }
@@ -696,6 +721,15 @@ function openPair(){
   openSheet('#sheetPair');
 }
 $('#menuBtn').onclick=()=>openSheet('#sheetMenu');
+$('#pipBtn').onclick=()=>{
+  if(!PIP_SUPPORTED || $('#pipBtn').classList.contains('hide')) return;
+  closeSheets();
+  try{ AB.enterPip(); }catch(e){ WY.onPipUnavailable(); }
+};
+$('#mapframe').addEventListener('load',()=>{
+  if(document.body.classList.contains('pip-mode'))
+    $('#mapframe').contentWindow?.postMessage({__wyPip:1,enabled:true},location.origin);
+});
 $('#mPair').onclick=()=>{ closeSheets(); openPair(); };
 $('#emptyPair').onclick=openPair;
 $('#pMake').onclick=makeInvite; $('#pEnter').onclick=()=>showPane('#sheetPair','enter');
