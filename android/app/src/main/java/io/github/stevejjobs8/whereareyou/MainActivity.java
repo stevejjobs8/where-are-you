@@ -63,6 +63,19 @@ public class MainActivity extends Activity {
         catch (IllegalStateException ignored) {}
     }
 
+    private void suppressPipForExternalActivity() {
+        suppressExternalPip = true;
+        if (Build.VERSION.SDK_INT >= 31 && deviceSupportsPip()) {
+            try {
+                setPictureInPictureParams(new PictureInPictureParams.Builder()
+                        .setAspectRatio(new Rational(1, 1))
+                        .setAutoEnterEnabled(false)
+                        .setSeamlessResizeEnabled(false)
+                        .build());
+            } catch (IllegalStateException ignored) {}
+        }
+    }
+
     private void enterMapPip() {
         if (!pipReady || !deviceSupportsPip() || isInPictureInPictureMode()) {
             callJs("window.WY&&WY.onPipUnavailable&&WY.onPipUnavailable()");
@@ -111,7 +124,7 @@ public class MainActivity extends Activity {
                 String u = r.getUrl().toString();
                 if (u.startsWith(BASE)) return false;
                 try {
-                    suppressExternalPip = true;
+                    suppressPipForExternalActivity();
                     startActivity(new Intent(Intent.ACTION_VIEW, r.getUrl()));
                 } catch (Exception ignored) {}
                 return true;
@@ -133,7 +146,10 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (web != null) web.evaluateJavascript("window.WY&&WY.onResume&&WY.onResume()", null);
-        suppressExternalPip = false;
+        if (suppressExternalPip) {
+            suppressExternalPip = false;
+            updatePipAvailability();
+        }
     }
 
     @Override public void onBackPressed() {
@@ -213,13 +229,13 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void shareText(String text) {
             runOnUiThread(() -> {
                 Intent i = new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text);
-                suppressExternalPip = true;
+                suppressPipForExternalActivity();
                 startActivity(Intent.createChooser(i, "보내기"));
             });
         }
         @JavascriptInterface public void openBattery() {
             runOnUiThread(() -> {
-                suppressExternalPip = true;
+                suppressPipForExternalActivity();
                 startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.parse("package:" + getPackageName())));
             });
@@ -227,7 +243,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void openUrl(String url) {
             runOnUiThread(() -> {
                 try {
-                    suppressExternalPip = true;
+                    suppressPipForExternalActivity();
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                 } catch (Exception ignored) {}
             });
