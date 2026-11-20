@@ -92,7 +92,8 @@ public class MainActivity extends Activity {
     @Override protected void onUserLeaveHint() {
         super.onUserLeaveHint();
         boolean suppressed = suppressExternalPip;
-        suppressExternalPip = false;
+        // Android 12+ restores auto-enter on resume after the external activity closes.
+        if (Build.VERSION.SDK_INT < 31) suppressExternalPip = false;
         if (!suppressed && Build.VERSION.SDK_INT < 31 && pipReady && !isFinishing())
             enterMapPip();
     }
